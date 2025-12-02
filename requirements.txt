@@ -1,3 +1,11 @@
 flask
 flask-migrate
+Flask-SQLAlchemy
+flask-bcrypt
+werkzeug
+sqlalchemy
+flask-jwt-extended
 graypy
+click
+wowicache
+requests
