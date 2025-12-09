@@ -4,7 +4,7 @@ import configparser
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
 from app import log
-from .extensions import db, migrate, bcrypt, jwt
+from .extensions import db, migrate, bcrypt, jwt, login_manager
 from datetime import timedelta
 
 
@@ -37,6 +37,10 @@ def create_app():
     migrate.init_app(tapp, db)
     bcrypt.init_app(tapp)
     jwt.init_app(tapp)
+    login_manager.init_app(tapp)
+
+    login_manager.login_view = "admin_login"
+    login_manager.login_message_category = "warning"
 
     tapp.wsgi_app = ProxyFix(tapp.wsgi_app, x_proto=1, x_host=1)
 
@@ -45,6 +49,12 @@ def create_app():
 
     register_routes(tapp)
     register_cli_commands(tapp)
+
+    from app.models import User
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.query.get(int(user_id))
 
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):

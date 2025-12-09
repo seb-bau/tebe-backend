@@ -2,6 +2,7 @@ flask
 flask-migrate
 Flask-SQLAlchemy
 flask-bcrypt
+flask-login
 werkzeug
 sqlalchemy
 flask-jwt-extended
