@@ -6,11 +6,24 @@ from flask_jwt_extended import (
     get_jwt_identity,
     get_jwt
 )
-from app.models import User, TokenBlocklist
+from erp import create_facility, create_component, edit_component
+from wowipy.wowipy import WowiPy
+from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem
 from app.extensions import db
 from flask import current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from functools import wraps
+from sqlalchemy import or_
+from app.erp import with_wowi_retry
+import logging
+import numbers
+
+
+logger = logging.getLogger('root')
+
+
+def is_numeric(value):
+    return isinstance(value, numbers.Number)
 
 
 def register_routes(app):
@@ -40,6 +53,9 @@ def register_routes(app):
             return jsonify({"msg": "email and password required"}), 400
 
         user = db.session.query(User).filter_by(email=email).first()
+
+        if not user:
+            return jsonify({"msg": "bad credentials"}), 401
 
         if not user.is_active:
             return jsonify({"msg": "user is disabled"}), 403
@@ -233,3 +249,314 @@ def register_routes(app):
         flash("Benutzer wurde gelöscht.", "info")
         return redirect(url_for("admin_users_list"))
 
+    # -------------------------
+    # FacilityCatalogItem (Ausstattungsgruppen)
+    # -------------------------
+    @app.route("/admin/facilities")
+    @admin_required
+    def admin_facilities_list():
+        """List facility catalog items with search, filters and pagination."""
+        # Basic query parameters for UX
+        page = request.args.get("page", 1, type=int)
+        q = (request.args.get("q") or "").strip()
+        status_filter = request.args.get("status")  # "active", "inactive" or None
+
+        query = FacilityCatalogItem.query
+
+        # Apply search filter (case-insensitive) – limited to a few fields
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                or_(
+                    FacilityCatalogItem.name.ilike(like),
+                    FacilityCatalogItem.custom_name.ilike(like),
+                    FacilityCatalogItem.status_name.ilike(like),
+                )
+            )
+
+        # Filter by enabled status
+        if status_filter == "active":
+            query = query.filter_by(enabled=True)
+        elif status_filter == "inactive":
+            query = query.filter_by(enabled=False)
+
+        # Default ordering
+        query = query.order_by(FacilityCatalogItem.name.asc())
+
+        # Pagination – moderate page size for performance
+        pagination = query.paginate(page=page, per_page=25, error_out=False)
+        facilities = pagination.items
+
+        return render_template(
+            "admin/facilities_list.html",
+            facilities=facilities,
+            pagination=pagination,
+            q=q,
+            status_filter=status_filter,
+        )
+
+    @app.route("/admin/facilities/<int:facility_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_facilities_edit(facility_id):
+        """Edit custom data of a single facility catalog item."""
+        facility = FacilityCatalogItem.query.get_or_404(facility_id)
+
+        if request.method == "POST":
+            enabled = bool(request.form.get("enabled"))
+            custom_name = request.form.get("custom_name") or None
+
+            facility.enabled = enabled
+            facility.custom_name = custom_name
+
+            db.session.commit()
+            flash("Ausstattungsgruppe wurde aktualisiert.", "success")
+            return redirect(url_for("admin_facilities_list"))
+
+        return render_template("admin/facility_form.html", facility=facility)
+
+    # -------------------------
+    # ComponentCatalogItem (Merkmale)
+    # -------------------------
+    @app.route("/admin/components")
+    @admin_required
+    def admin_components_list():
+        """List component catalog items with search, filters and pagination."""
+        page = request.args.get("page", 1, type=int)
+        q = (request.args.get("q") or "").strip()
+        status_filter = request.args.get("status")  # "active", "inactive" or None
+
+        query = ComponentCatalogItem.query.join(FacilityCatalogItem, isouter=True)
+
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                or_(
+                    ComponentCatalogItem.name.ilike(like),
+                    ComponentCatalogItem.custom_name.ilike(like),
+                    ComponentCatalogItem.comment.ilike(like),
+                    FacilityCatalogItem.name.ilike(like),
+                    FacilityCatalogItem.custom_name.ilike(like),
+                )
+            )
+
+        if status_filter == "active":
+            query = query.filter(ComponentCatalogItem.enabled.is_(True))
+        elif status_filter == "inactive":
+            query = query.filter(ComponentCatalogItem.enabled.is_(False))
+
+        query = query.order_by(ComponentCatalogItem.name.asc())
+
+        pagination = query.paginate(page=page, per_page=25, error_out=False)
+        components = pagination.items
+
+        return render_template(
+            "admin/components_list.html",
+            components=components,
+            pagination=pagination,
+            q=q,
+            status_filter=status_filter,
+        )
+
+    @app.route("/admin/components/<int:component_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_components_edit(component_id):
+        """Edit custom data of a single component catalog item."""
+        component = ComponentCatalogItem.query.get_or_404(component_id)
+
+        if request.method == "POST":
+            enabled = bool(request.form.get("enabled"))
+            is_bool = bool(request.form.get("is_bool"))
+            custom_name = request.form.get("custom_name") or None
+
+            component.enabled = enabled
+            component.custom_name = custom_name
+            component.is_bool = is_bool
+
+            db.session.commit()
+            flash("Merkmal wurde aktualisiert.", "success")
+            return redirect(url_for("admin_components_list"))
+
+        return render_template("admin/component_form.html", component=component)
+
+    # -------------------------
+    # UnderComponentItem (Merkmalausprägungen)
+    # -------------------------
+    @app.route("/admin/under_components")
+    @admin_required
+    def admin_under_components_list():
+        """List under component items with search, filters and pagination."""
+        page = request.args.get("page", 1, type=int)
+        q = (request.args.get("q") or "").strip()
+        status_filter = request.args.get("status")  # "active", "inactive" or None
+
+        query = UnderComponentItem.query
+
+        if q:
+            like = f"%{q}%"
+            query = query.filter(
+                or_(
+                    UnderComponentItem.name.ilike(like),
+                    UnderComponentItem.custom_name.ilike(like),
+                )
+            )
+
+        if status_filter == "active":
+            query = query.filter(UnderComponentItem.enabled.is_(True))
+        elif status_filter == "inactive":
+            query = query.filter(UnderComponentItem.enabled.is_(False))
+
+        query = query.order_by(UnderComponentItem.name.asc())
+
+        pagination = query.paginate(page=page, per_page=25, error_out=False)
+        under_components = pagination.items
+
+        return render_template(
+            "admin/under_components_list.html",
+            under_components=under_components,
+            pagination=pagination,
+            q=q,
+            status_filter=status_filter,
+        )
+
+    @app.route("/admin/under_components/<int:under_component_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_under_components_edit(under_component_id):
+        """Edit custom data of a single under component item."""
+        under_component = UnderComponentItem.query.get_or_404(under_component_id)
+
+        if request.method == "POST":
+            enabled = bool(request.form.get("enabled"))
+            custom_name = request.form.get("custom_name") or None
+
+            under_component.enabled = enabled
+            under_component.custom_name = custom_name
+
+            db.session.commit()
+            flash("Merkmalausprägung wurde aktualisiert.", "success")
+            return redirect(url_for("admin_under_components_list"))
+
+        return render_template(
+            "admin/under_component_form.html",
+            under_component=under_component,
+        )
+
+    @app.route("/app/use-unit/data/current/<int:use_unit_id>", methods=["GET"])
+    @jwt_required()
+    def app_uu_current_data(use_unit_id):
+        def _do_app_uu_current_data(wowi: WowiPy, uu_id: int):
+            components = wowi.get_components(use_unit_id=uu_id)
+            retval_existing = []
+            retval_missing = []
+            found_types = []
+            for component in components:
+                comp_cat_item = db.session.get(ComponentCatalogItem, component.component_catalog_id)
+                if not comp_cat_item:
+                    logger.error(f"app_uu_current_data: Could not get component catalog item with id "
+                                 f"'{component.component_catalog_id}' for use_unit_id '{use_unit_id}' for user "
+                                 f"'todo'")
+                    return jsonify({"msg": f"Missing component catalog item '{component.component_catalog_id}'"}), 500
+                if not comp_cat_item.enabled:
+                    continue
+                if component.under_components:
+                    under_components = []
+                    for uc in component.under_components:
+                        under_components.append({
+                            "id": uc.id_,
+                            "name": uc.name
+                        })
+                else:
+                    under_components = None
+                retval_existing.append({
+                    "id": component.id_,
+                    "name": component.name,
+                    "component_catalog_id": component.component_catalog_id,
+                    "quantitiy": component.count,
+                    "unit": comp_cat_item.quantity_type_name,
+                    "under_components": under_components,
+                    "facility_cat_id": component.facility_id
+                })
+                found_types.append(comp_cat_item.id)
+
+            comp_cat = db.session.query(ComponentCatalogItem).filter(ComponentCatalogItem.enabled.is_(True)).all()
+            cat_item: ComponentCatalogItem
+            for cat_item in comp_cat:
+                if cat_item.id not in found_types:
+                    under_components = []
+                    for uc in cat_item.under_components:
+                        under_components.append({
+                            "id": uc.id,
+                            "name": uc.name
+                        })
+                    retval_missing.append({
+                        "id": cat_item.id,
+                        "name": cat_item.name,
+                        "unit": cat_item.quantity_type_name,
+                        "under_components": under_components,
+                        "facility_cat_id": cat_item.facility_catalog_item_id
+                    })
+            return {
+                "existing_items": retval_existing,
+                "missing_items": retval_missing
+            }
+        oretval = with_wowi_retry(_do_app_uu_current_data, uu_id=use_unit_id)
+        print(oretval)
+        return jsonify(oretval)
+
+    @app.route("/app/use-unit/data/write/<int:use_unit_id>", methods=["POST"])
+    @jwt_required()
+    def app_uu_write_data(use_unit_id):
+        def _do_app_uu_write_data(wowi: WowiPy, uu_id: int):
+            data = request.get_json()
+            components_updated = 0
+            components_created = 0
+            facilities_created = 0
+            for entry in data:
+                if not entry.get("component_catalog_id"):
+                    return jsonify({"msg": "missing component_catalog_id"}), 400
+                comp_cat_item = db.session.get(ComponentCatalogItem, entry.get("component_catalog_id"))
+                if not comp_cat_item:
+                    return jsonify({"msg": "unknown component_catalog_id"}), 400
+
+                if not comp_cat_item.enabled:
+                    return jsonify({"msg": "component_catalog_id disabled"}), 400
+
+                if not is_numeric(entry.get("quantity")):
+                    return jsonify({"msg": "quantity has to be numeric"}), 400
+
+                if not entry.get("component_id"):
+                    # Wenn der Client die component_id nicht mitsendet, heißt das in der Regel, dass diese Komponente
+                    # noch nicht für die UseUnit existiert.
+                    # TODO: In der Zukunft könnte man an dieser Stelle prüfen, ob das wirklich der Fall ist
+                    # TODO: Es ist ggf. ein Performance-Problem, die Facilities der UU hier jedes mal abzufragen
+                    uu_facilities = wowi.get_facilities(use_unit_id=uu_id)
+                    uu_facility = None
+                    for fac_entry in uu_facilities:
+                        if fac_entry.facility_catalog_id == comp_cat_item.facility_catalog_item_id:
+                            uu_facility = fac_entry.id_
+                            break
+                    if not uu_facility:
+                        uu_facility = create_facility(wowi, comp_cat_item.facility_catalog_item_id, uu_id)
+                        facilities_created += 1
+                    if not uu_facility:
+                        return abort(500, "Error while creating facility.")
+                    print(comp_cat_item.id)
+
+                    component_id = create_component(wowi,
+                                                    component_catalog_id=comp_cat_item.id,
+                                                    facility_id=uu_facility,
+                                                    count=int(entry.get("quantity")))
+                    components_created += 1
+                    if not component_id:
+                        return abort(500, "Error while creating component")
+                    logger.info(f"app_uu_write_data: Created component {component_id}")
+                else:
+                    edit_component(wowi, entry.get("component_id"), int(entry.get("quantity")))
+                    components_updated += 1
+
+            return jsonify({
+                "facilities_created": facilities_created,
+                "components_created": components_created,
+                "components_updated": components_updated
+            })
+        oretval = with_wowi_retry(_do_app_uu_write_data, uu_id=use_unit_id)
+        return oretval

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Merkmal bearbeiten{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Merkmal bearbeiten</h1>
+
+    <form method="post">
+        <div class="row">
+            <!-- ERP data (read-only) -->
+            <div class="col-md-3 mb-3">
+                <label class="form-label">ID</label>
+                <input type="text" class="form-control" value="{{ component.id }}" disabled>
+            </div>
+
+            <div class="col-md-9 mb-3">
+                <label class="form-label">Name (ERP)</label>
+                <input type="text" class="form-control" value="{{ component.name }}" disabled>
+            </div>
+
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Kommentar</label>
+                <textarea class="form-control" rows="3" disabled>{{ component.comment or '' }}</textarea>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Wartungsrelevant</label>
+                <input type="text" class="form-control"
+                       value="{{ 'Ja' if component.is_maintenance_relevant else 'Nein' }}" disabled>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Instandsetzungsrelevant</label>
+                <input type="text" class="form-control"
+                       value="{{ 'Ja' if component.is_repair_relevant else 'Nein' }}" disabled>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Vermietungsrelevant</label>
+                <input type="text" class="form-control"
+                       value="{{ 'Ja' if component.is_lease_relevant else 'Nein' }}" disabled>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Garantierelevant</label>
+                <input type="text" class="form-control"
+                       value="{{ 'Ja' if component.is_warranty_relevant else 'Nein' }}" disabled>
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Mengentyp-Name</label>
+                <input type="text" class="form-control"
+                       value="{{ component.quantity_type_name or '–' }}" disabled>
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Mengentyp-Code</label>
+                <input type="text" class="form-control"
+                       value="{{ component.quantity_type_code or '–' }}" disabled>
+            </div>
+
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Zählgerät</label>
+                <input type="text" class="form-control"
+                       value="{{ 'Ja' if component.is_metering_device else 'Nein' }}" disabled>
+            </div>
+
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Ausstattungsgruppe</label>
+                <input type="text" class="form-control"
+                       value="{{ component.facility.display_name if component.facility else '–' }}" disabled>
+            </div>
+        </div>
+
+        <hr class="my-4">
+
+        <!-- Custom data (editable) -->
+        <h2 class="h4 mb-3">Benutzerdefinierte Einstellungen</h2>
+
+        <div class="mb-3">
+            <label for="custom_name" class="form-label">Benutzerdefinierter Name</label>
+            <input type="text"
+                   class="form-control"
+                   id="custom_name"
+                   name="custom_name"
+                   value="{{ component.custom_name or '' }}">
+            <div class="form-text">
+                Wenn leer, wird der ERP-Name verwendet.
+            </div>
+        </div>
+
+        <div class="form-check form-switch mb-4">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="enabled"
+                   name="enabled"
+                   value="1"
+                   {% if component.enabled %}checked{% endif %}>
+            <label class="form-check-label" for="enabled">
+                Merkmal ist aktiv
+            </label>
+        </div>
+
+                <div class="form-check form-switch mb-4">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="is_bool"
+                   name="is_bool"
+                   value="1"
+                   {% if component.is_bool %}checked{% endif %}>
+            <label class="form-check-label" for="is_bool">
+                Ist booleschert Wert (ja/nein)
+            </label>
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('admin_components_list') }}" class="btn btn-outline-secondary">
+                Zurück zur Übersicht
+            </a>
+            <button type="submit" class="btn btn-primary">
+                Speichern
+            </button>
+        </div>
+    </form>
+{% endblock %}

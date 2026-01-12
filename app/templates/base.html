@@ -40,6 +40,21 @@
                     Benutzer
                 </a>
             </li>
+            <li>
+                <a href="{{ url_for('admin_facilities_list') }}" class="nav-link text-white">
+                    Ausstattungsgruppen
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('admin_components_list') }}" class="nav-link text-white">
+                    Merkmale
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('admin_under_components_list') }}" class="nav-link text-white">
+                    Merkmalausprägungen
+                </a>
+            </li>
         </ul>
         <hr>
         {% if current_user.is_authenticated %}

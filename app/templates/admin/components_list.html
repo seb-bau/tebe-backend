@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Merkmale{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Merkmale</h1>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-md-4">
+            <label for="q" class="form-label">Suche</label>
+            <input type="text"
+                   class="form-control"
+                   id="q"
+                   name="q"
+                   placeholder="Name, Kommentar, Ausstattungsgruppe..."
+                   value="{{ q or '' }}">
+        </div>
+        <div class="col-md-4">
+            <label for="status" class="form-label">Status</label>
+            <select class="form-select" id="status" name="status">
+                <option value="">Alle</option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>
+                    Nur aktive
+                </option>
+                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>
+                    Nur inaktive
+                </option>
+            </select>
+        </div>
+        <div class="col-md-4 d-flex gap-2">
+            <button type="submit" class="btn btn-primary mt-auto">
+                Filtern
+            </button>
+            <a href="{{ url_for('admin_components_list') }}" class="btn btn-outline-secondary mt-auto">
+                Zurücksetzen
+            </a>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-body">
+            <table class="table table-striped table-hover align-middle mb-0">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name (ERP)</th>
+                    <th>Benutzerdefinierter Name</th>
+                    <th>Anzeigename</th>
+                    <th>Kommentar</th>
+                    <th>Wartung</th>
+                    <th>Instandsetzung</th>
+                    <th>Vermietung</th>
+                    <th>Garantie</th>
+                    <th>Mengentyp</th>
+                    <th>Zählgerät</th>
+                    <th>Ausstattungsgruppe</th>
+                    <th>Aktiv</th>
+                    <th>Boolscher Wert</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for component in components %}
+                    <tr>
+                        <td>{{ component.id }}</td>
+                        <td>{{ component.name }}</td>
+                        <td>{{ component.custom_name or "–" }}</td>
+                        <td>{{ component.display_name }}</td>
+                        <td>{{ component.comment or "–" }}</td>
+                        <td>{{ "Ja" if component.is_maintenance_relevant else "Nein" }}</td>
+                        <td>{{ "Ja" if component.is_repair_relevant else "Nein" }}</td>
+                        <td>{{ "Ja" if component.is_lease_relevant else "Nein" }}</td>
+                        <td>{{ "Ja" if component.is_warranty_relevant else "Nein" }}</td>
+                        <td>{{ component.quantity_type_name or component.quantity_type_code or "–" }}</td>
+                        <td>{{ "Ja" if component.is_metering_device else "Nein" }}</td>
+                        <td>{{ component.facility.display_name if component.facility else "–" }}</td>
+                        <td>
+                            {% if component.enabled %}
+                                <span class="badge bg-success">Aktiv</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inaktiv</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if component.is_bool %}
+                                <span class="badge bg-success">Ja</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Nein</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a href="{{ url_for('admin_components_edit', component_id=component.id) }}"
+                               class="btn btn-sm btn-outline-primary">
+                                Bearbeiten
+                            </a>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="14" class="text-center text-muted">
+                            Keine Merkmale gefunden.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+              {% if pagination %}
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted small">
+                        Seite {{ pagination.page }} von {{ pagination.pages }}
+                        – insgesamt {{ pagination.total }} Einträge
+                    </div>
+                    {% if pagination.pages > 1 %}
+                        <nav aria-label="Seiten-Navigation">
+                            <ul class="pagination mb-0">
+                                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                                    <a class="page-link"
+                                       href="{{ url_for('admin_components_list', page=pagination.prev_num, q=q, status=status_filter) }}"
+                                       aria-label="Vorherige Seite">
+                                        &laquo;
+                                    </a>
+                                </li>
+                                {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                                    {% if p %}
+                                        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                                            <a class="page-link"
+                                               href="{{ url_for('admin_components_list', page=p, q=q, status=status_filter) }}">
+                                                {{ p }}
+                                            </a>
+                                        </li>
+                                    {% else %}
+                                        <li class="page-item disabled"><span class="page-link">…</span></li>
+                                    {% endif %}
+                                {% endfor %}
+                                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                                    <a class="page-link"
+                                       href="{{ url_for('admin_components_list', page=pagination.next_num, q=q, status=status_filter) }}"
+                                       aria-label="Nächste Seite">
+                                        &raquo;
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}

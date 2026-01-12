@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Merkmalausprägung bearbeiten{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Merkmalausprägung bearbeiten</h1>
+
+    <form method="post">
+        <div class="row">
+            <!-- ERP data (read-only) -->
+            <div class="col-md-3 mb-3">
+                <label class="form-label">ID</label>
+                <input type="text" class="form-control" value="{{ under_component.id }}" disabled>
+            </div>
+
+            <div class="col-md-9 mb-3">
+                <label class="form-label">Name (ERP)</label>
+                <input type="text" class="form-control" value="{{ under_component.name }}" disabled>
+            </div>
+
+            <div class="col-md-12 mb-3">
+                <label class="form-label">Verknüpfte Merkmale (Anzahl)</label>
+                <input type="text" class="form-control"
+                       value="{{ under_component.components.count() }}" disabled>
+            </div>
+        </div>
+
+        <hr class="my-4">
+
+        <!-- Custom data (editable) -->
+        <h2 class="h4 mb-3">Benutzerdefinierte Einstellungen</h2>
+
+        <div class="mb-3">
+            <label for="custom_name" class="form-label">Benutzerdefinierter Name</label>
+            <input type="text"
+                   class="form-control"
+                   id="custom_name"
+                   name="custom_name"
+                   value="{{ under_component.custom_name or '' }}">
+            <div class="form-text">
+                Wenn leer, wird der ERP-Name verwendet.
+            </div>
+        </div>
+
+        <div class="form-check form-switch mb-4">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="enabled"
+                   name="enabled"
+                   value="1"
+                   {% if under_component.enabled %}checked{% endif %}>
+            <label class="form-check-label" for="enabled">
+                Merkmalausprägung ist aktiv
+            </label>
+        </div>
+
+        <div class="d-flex justify-content-between">
+            <a href="{{ url_for('admin_under_components_list') }}" class="btn btn-outline-secondary">
+                Zurück zur Übersicht
+            </a>
+            <button type="submit" class="btn btn-primary">
+                Speichern
+            </button>
+        </div>
+    </form>
+{% endblock %}

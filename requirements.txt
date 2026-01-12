@@ -10,3 +10,4 @@ graypy
 click
 wowicache
 requests
+wowipy

@@ -2,6 +2,7 @@ import click
 from app.extensions import db
 from app.models import User
 from app.geo import update_geolocation, get_geolocations_in_radius_m
+from app.erp import sync_facility_and_component_catalog
 
 
 def register_cli_commands(app):
@@ -67,3 +68,10 @@ def register_cli_commands(app):
         click.echo(f"Found buildings in radius {radius} km:")
         for r in results:
             click.echo(f"- {r['building_idnum']} ({r['lat']}, {r['lon']}) -> {r['distance_m']} m")
+
+    @app.cli.command("sync-erp")
+    def cli_sync_erp():
+        results = sync_facility_and_component_catalog()
+
+        click.echo(f"Result: {results}")
+
