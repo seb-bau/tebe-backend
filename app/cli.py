@@ -1,7 +1,7 @@
 import click
 from app.extensions import db
 from app.models import User
-from app.geo import update_geolocation, get_geolocations_in_radius_m
+from app.geo import update_geolocation, get_buildings_in_radius_m
 from app.erp import sync_facility_and_component_catalog
 
 
@@ -63,7 +63,7 @@ def register_cli_commands(app):
     def test_radius(lat, lon, radius):
         radius = float(radius)
 
-        results = get_geolocations_in_radius_m(lat, lon, radius)
+        results = get_buildings_in_radius_m(lat, lon, radius)
 
         click.echo(f"Found buildings in radius {radius} km:")
         for r in results:

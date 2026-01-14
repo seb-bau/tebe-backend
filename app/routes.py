@@ -8,13 +8,15 @@ from flask_jwt_extended import (
 )
 from erp import create_facility, create_component, edit_component
 from wowipy.wowipy import WowiPy
-from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem
+from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, Geolocation
 from app.extensions import db
 from flask import current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from functools import wraps
 from sqlalchemy import or_
 from app.erp import with_wowi_retry
+from geo import get_buildings_in_radius_m, haversine_distance_m
+from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor, Person
 import logging
 import numbers
 
@@ -473,7 +475,8 @@ def register_routes(app):
                     "quantitiy": component.count,
                     "unit": comp_cat_item.quantity_type_name,
                     "under_components": under_components,
-                    "facility_cat_id": component.facility_id
+                    "facility_cat_id": component.facility_id,
+                    "is_bool": comp_cat_item.is_bool
                 })
                 found_types.append(comp_cat_item.id)
 
@@ -492,7 +495,8 @@ def register_routes(app):
                         "name": cat_item.name,
                         "unit": cat_item.quantity_type_name,
                         "under_components": under_components,
-                        "facility_cat_id": cat_item.facility_catalog_item_id
+                        "facility_cat_id": cat_item.facility_catalog_item_id,
+                        "is_bool": cat_item.is_bool
                     })
             return {
                 "existing_items": retval_existing,
@@ -560,3 +564,93 @@ def register_routes(app):
             })
         oretval = with_wowi_retry(_do_app_uu_write_data, uu_id=use_unit_id)
         return oretval
+
+    def building_ids_from_radius(lat, lon, radius_m):
+        locations_found = get_buildings_in_radius_m(lat, lon, radius_m=radius_m)
+        return {item["building_id"] for item in locations_found if item.get("building_id")}
+
+    def apply_fulltext(query, fulltext: str):
+        ft = (fulltext or "").strip()
+        if not ft:
+            return query
+
+        like = f"%{ft}%"
+        return query.filter(or_(
+            Building.street_complete.ilike(like),
+            Building.street.ilike(like),
+            Building.house_number.ilike(like),
+            Building.postcode.ilike(like),
+            Building.town.ilike(like),
+        ))
+
+    @app.route("/app/use-unit/search", methods=["GET"])
+    @jwt_required()
+    def route_search():
+        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
+
+        param_fulltext = request.args.get("fulltext")
+        param_radius = request.args.get("radius")  # meters
+        param_lat = request.args.get("lat")
+        param_lon = request.args.get("lon")
+
+        q = cache.session.query(Building)
+
+        q = apply_fulltext(q, param_fulltext)
+        if param_radius and param_lat and param_lon:
+            radius_m = float(param_radius)
+            lat = float(param_lat)
+            lon = float(param_lon)
+
+            building_ids = building_ids_from_radius(lat, lon, radius_m)
+
+            if not building_ids:
+                return jsonify({"items": []}), 200
+
+            q = q.filter(Building.internal_id.in_(building_ids))
+
+        buildings = q.order_by(Building.street_complete).all()
+
+        retval = []
+        building: Building
+        for building in buildings:
+            uu_info = []
+            uus = cache.session.query(UseUnit).filter(UseUnit.building_id == building.internal_id).all()
+            uu: UseUnit
+            for uu in uus:
+                contract_info = {}
+                contract: Contract
+                for contract in uu.contracts:
+                    if contract.status_name == "aktiv":
+                        contractor: Contractor
+                        contractor = contract.contractors[0]
+                        person: Person
+                        person = contractor.person
+                        contract_info = {
+                            "id_num": contract.id_num,
+                            "contractor_name": f"{person.last_name}, {person.first_name}",
+                            "start": contract.contract_start,
+                            "end": contract.contract_end
+                        }
+                    break
+                uu_info.append({
+                    "id_num": uu.id_num,
+                    "id": uu.internal_id,
+                    "location": uu.description_of_position,
+                    "contract": contract_info
+                })
+                location: Geolocation
+            location = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
+            retval.append({
+                "id": building.internal_id,
+                "id_num": building.id_num,
+                "street_complete": building.street_complete,
+                "postcode": building.postcode,
+                "town": building.town,
+                "use_units": uu_info,
+                "lat": location.lat,
+                "lon": location.lon,
+                "distance": round(haversine_distance_m(location.lat, location.lon, param_lat, param_lon))
+            })
+        return jsonify({
+            "items": retval
+        })
