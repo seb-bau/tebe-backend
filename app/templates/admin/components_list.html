@@ -56,6 +56,7 @@
                     <th>Ausstattungsgruppe</th>
                     <th>Aktiv</th>
                     <th>Boolscher Wert</th>
+                    <th>Single Sub</th>
                     <th></th>
                 </tr>
                 </thead>
@@ -83,6 +84,13 @@
                         </td>
                         <td>
                             {% if component.is_bool %}
+                                <span class="badge bg-success">Ja</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Nein</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if component.single_under_component %}
                                 <span class="badge bg-success">Ja</span>
                             {% else %}
                                 <span class="badge bg-secondary">Nein</span>

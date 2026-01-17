@@ -157,13 +157,18 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
         return None
 
 
-def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, count: int) -> int | None:
+def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, count: int,
+                     psub_components: list[int] = None) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
     bool_handling = config.get("Handling", "bool_handling")
     component_cat_item: ComponentCatalogItem
     component_cat_item = db.session.get(ComponentCatalogItem, component_catalog_id)
-    sub_components = []
+    if component_cat_item.is_bool:
+        # Wenn der Komponententyp bool ist, sollen keine eingehenden sub_components verarbeitet werden.
+        sub_components = []
+    else:
+        sub_components = psub_components
     if component_cat_item.is_bool and bool_handling == "sub_components":
         if count > 1:
             logger.error(f"create_component: facility_id: {facility_id} compcat {component_catalog_id} invalid count"
@@ -190,7 +195,7 @@ def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, 
         return None
 
 
-def edit_component(wowi: WowiPy, component_id: int, count: int) -> int | None:
+def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components: list[int] = None) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
     bool_handling = config.get("Handling", "bool_handling")
@@ -204,7 +209,11 @@ def edit_component(wowi: WowiPy, component_id: int, count: int) -> int | None:
     component_catalog_id = the_component.component_catalog_id
     component_cat_item: ComponentCatalogItem
     component_cat_item = db.session.get(ComponentCatalogItem, component_catalog_id)
-    sub_components = []
+    if component_cat_item.is_bool:
+        # Wenn der Komponententyp bool ist, sollen keine eingehenden sub_components verarbeitet werden.
+        sub_components = []
+    else:
+        sub_components = psub_components
     if component_cat_item.is_bool and bool_handling == "sub_components":
         if count > 1:
             logger.error(f"edit_component comp {component_id} compcat {component_catalog_id} invalid count"

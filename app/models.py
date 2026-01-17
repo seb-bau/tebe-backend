@@ -103,6 +103,8 @@ class ComponentCatalogItem(db.Model):
     enabled = db.Column(db.Boolean, default=False)
     custom_name = db.Column(db.String(200), nullable=True)
     is_bool = db.Column(db.Boolean, default=False)
+    single_under_component = db.Column(db.Boolean, default=False)
+    hide_quantity = db.Column(db.Boolean, default=False)
 
     # connections
     facility_catalog_item_id = db.Column(

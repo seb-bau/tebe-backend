@@ -6,7 +6,7 @@ from flask_jwt_extended import (
     get_jwt_identity,
     get_jwt
 )
-from erp import create_facility, create_component, edit_component
+from app.erp import create_facility, create_component, edit_component
 from wowipy.wowipy import WowiPy
 from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, Geolocation
 from app.extensions import db
@@ -15,7 +15,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from functools import wraps
 from sqlalchemy import or_
 from app.erp import with_wowi_retry
-from geo import get_buildings_in_radius_m, haversine_distance_m
+from app.geo import get_buildings_in_radius_m, haversine_distance_m
 from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor, Person
 import logging
 import numbers
@@ -368,11 +368,19 @@ def register_routes(app):
         if request.method == "POST":
             enabled = bool(request.form.get("enabled"))
             is_bool = bool(request.form.get("is_bool"))
+            single_under_component = bool(request.form.get("single_under_component"))
+            hide_quantity = bool(request.form.get("hide_quantity"))
             custom_name = request.form.get("custom_name") or None
 
+            if is_bool and single_under_component:
+                flash("Wenn bool ausgewählt wird, kann nicht zeitgleich Single Sub aktiviert sein.",
+                      category="error")
+                return redirect(url_for("admin_components_list"))
             component.enabled = enabled
             component.custom_name = custom_name
             component.is_bool = is_bool
+            component.single_under_component = single_under_component
+            component.hide_quantity = hide_quantity
 
             db.session.commit()
             flash("Merkmal wurde aktualisiert.", "success")
@@ -459,12 +467,13 @@ def register_routes(app):
                     return jsonify({"msg": f"Missing component catalog item '{component.component_catalog_id}'"}), 500
                 if not comp_cat_item.enabled:
                     continue
-                if component.under_components:
+                if comp_cat_item.under_components:
                     under_components = []
-                    for uc in component.under_components:
+                    for uc in comp_cat_item.under_components:
                         under_components.append({
-                            "id": uc.id_,
-                            "name": uc.name
+                            "id": uc.id,
+                            "name": uc.name,
+                            "selected": any(c.id_ == uc.id for c in component.under_components)
                         })
                 else:
                     under_components = None
@@ -476,7 +485,9 @@ def register_routes(app):
                     "unit": comp_cat_item.quantity_type_name,
                     "under_components": under_components,
                     "facility_cat_id": component.facility_id,
-                    "is_bool": comp_cat_item.is_bool
+                    "is_bool": comp_cat_item.is_bool,
+                    "single_under_component": comp_cat_item.single_under_component,
+                    "hide_quantity": comp_cat_item.hide_quantity
                 })
                 found_types.append(comp_cat_item.id)
 
@@ -496,14 +507,15 @@ def register_routes(app):
                         "unit": cat_item.quantity_type_name,
                         "under_components": under_components,
                         "facility_cat_id": cat_item.facility_catalog_item_id,
-                        "is_bool": cat_item.is_bool
+                        "is_bool": cat_item.is_bool,
+                        "single_under_component": cat_item.single_under_component,
+                        "hide_quantity": cat_item.hide_quantity
                     })
             return {
                 "existing_items": retval_existing,
                 "missing_items": retval_missing
             }
         oretval = with_wowi_retry(_do_app_uu_current_data, uu_id=use_unit_id)
-        print(oretval)
         return jsonify(oretval)
 
     @app.route("/app/use-unit/data/write/<int:use_unit_id>", methods=["POST"])
@@ -511,6 +523,7 @@ def register_routes(app):
     def app_uu_write_data(use_unit_id):
         def _do_app_uu_write_data(wowi: WowiPy, uu_id: int):
             data = request.get_json()
+            print(data)
             components_updated = 0
             components_created = 0
             facilities_created = 0
@@ -527,6 +540,7 @@ def register_routes(app):
                 if not is_numeric(entry.get("quantity")):
                     return jsonify({"msg": "quantity has to be numeric"}), 400
 
+                psub = entry.get("sub_components") or []
                 if not entry.get("component_id"):
                     # Wenn der Client die component_id nicht mitsendet, heißt das in der Regel, dass diese Komponente
                     # noch nicht für die UseUnit existiert.
@@ -543,18 +557,18 @@ def register_routes(app):
                         facilities_created += 1
                     if not uu_facility:
                         return abort(500, "Error while creating facility.")
-                    print(comp_cat_item.id)
-
                     component_id = create_component(wowi,
                                                     component_catalog_id=comp_cat_item.id,
                                                     facility_id=uu_facility,
-                                                    count=int(entry.get("quantity")))
+                                                    count=int(entry.get("quantity")),
+                                                    psub_components=psub
+                                                    )
                     components_created += 1
                     if not component_id:
                         return abort(500, "Error while creating component")
                     logger.info(f"app_uu_write_data: Created component {component_id}")
                 else:
-                    edit_component(wowi, entry.get("component_id"), int(entry.get("quantity")))
+                    edit_component(wowi, entry.get("component_id"), int(entry.get("quantity")), psub_components=psub)
                     components_updated += 1
 
             return jsonify({
