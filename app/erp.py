@@ -195,7 +195,8 @@ def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, 
         return None
 
 
-def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components: list[int] = None) -> int | None:
+def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components: list[int] = None,
+                   unknown: bool = False) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
     bool_handling = config.get("Handling", "bool_handling")
@@ -223,6 +224,12 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
             sub_components.append(config.getint("Handling", "bool_sub_component_yes_id"))
         else:
             sub_components.append(config.getint("Handling", "bool_sub_component_no_id"))
+
+    if unknown:
+        # Wenn eine vorher vorhandene Komponente in der App explizit auf "Unbekannt" gesetzt wurde, muss sie entfernt
+        # werden.
+        wowi.delete_component(the_component.facility_id, the_component.id_)
+        return True
 
     cr_f_result: Result
     try:

@@ -17,6 +17,9 @@ REQUEST_INTERVAL = 0.25  # limit
 def haversine_distance_m(lat1, lon1, lat2, lon2):
     R = 6371000  # Erdradius in METERN
 
+    if not lat1 or not lon1 or not lat2 or not lon2:
+        return None
+
     lat1, lon1, lat2, lon2 = map(math.radians, [
         float(lat1), float(lon1), float(lat2), float(lon2)
     ])

@@ -527,6 +527,7 @@ def register_routes(app):
             components_updated = 0
             components_created = 0
             facilities_created = 0
+            components_deleted = 0
             for entry in data:
                 if not entry.get("component_catalog_id"):
                     return jsonify({"msg": "missing component_catalog_id"}), 400
@@ -542,6 +543,11 @@ def register_routes(app):
 
                 psub = entry.get("sub_components") or []
                 if not entry.get("component_id"):
+                    if entry.get("is_unknown"):
+                        # Wenn es die Komponente noch nicht gab und sie unbekannt istm können wir sie direkt
+                        # ignorieren
+                        print("ignore")
+                        continue
                     # Wenn der Client die component_id nicht mitsendet, heißt das in der Regel, dass diese Komponente
                     # noch nicht für die UseUnit existiert.
                     # TODO: In der Zukunft könnte man an dieser Stelle prüfen, ob das wirklich der Fall ist
@@ -568,13 +574,19 @@ def register_routes(app):
                         return abort(500, "Error while creating component")
                     logger.info(f"app_uu_write_data: Created component {component_id}")
                 else:
-                    edit_component(wowi, entry.get("component_id"), int(entry.get("quantity")), psub_components=psub)
-                    components_updated += 1
+                    unknown = bool(entry.get("is_unknown"))
+                    edit_component(wowi, entry.get("component_id"), int(entry.get("quantity")), psub_components=psub,
+                                   unknown=unknown)
+                    if not unknown:
+                        components_updated += 1
+                    else:
+                        components_deleted += 1
 
             return jsonify({
                 "facilities_created": facilities_created,
                 "components_created": components_created,
-                "components_updated": components_updated
+                "components_updated": components_updated,
+                "components_deleted": components_deleted
             })
         oretval = with_wowi_retry(_do_app_uu_write_data, uu_id=use_unit_id)
         return oretval
@@ -654,6 +666,10 @@ def register_routes(app):
                 })
                 location: Geolocation
             location = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
+            if location:
+                distance = round(haversine_distance_m(location.lat, location.lon, param_lat, param_lon))
+            else:
+                distance = None
             retval.append({
                 "id": building.internal_id,
                 "id_num": building.id_num,
@@ -663,7 +679,7 @@ def register_routes(app):
                 "use_units": uu_info,
                 "lat": location.lat,
                 "lon": location.lon,
-                "distance": round(haversine_distance_m(location.lat, location.lon, param_lat, param_lon))
+                "distance": distance
             })
         return jsonify({
             "items": retval
