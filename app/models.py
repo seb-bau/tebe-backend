@@ -28,6 +28,13 @@ class User(db.Model, UserMixin):
     password_hash = db.Column(db.String(128), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     is_admin = db.Column(db.Boolean, default=False)
+    last_action = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_lat = db.Column(db.Numeric, nullable=True)
+    last_lon = db.Column(db.Numeric, nullable=True)
+    last_platform = db.Column(db.String(100), nullable=True)  # ios | android
+    last_version = db.Column(db.String(100), nullable=True)
+    last_ip = db.Column(db.String(50), nullable=True)
+    enable_score = db.Column(db.Boolean, nullable=True, default=True)
 
     def set_password(self, password: str):
         self.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
@@ -151,3 +158,24 @@ class UnderComponentItem(db.Model):
     @property
     def display_name(self):
         return self.custom_name or self.name
+
+
+class EventItem(db.Model):
+    __tablename__ = "event_item"
+
+    # Mögliche actions: login, logout, create, edit, delete
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False)
+    user_name = db.Column(db.String(255), nullable=False)
+    action = db.Column(db.String(50), nullable=False)
+    stamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    use_unit_id = db.Column(db.Integer, nullable=True)
+    last_lat = db.Column(db.Numeric, nullable=True)
+    last_lon = db.Column(db.Numeric, nullable=True)
+    facility_id = db.Column(db.Integer, nullable=True)
+    facility_catalog_id = db.Column(db.Integer, nullable=True)
+    component_id = db.Column(db.Integer, nullable=True)
+    component_catalog_id = db.Column(db.Integer, nullable=True)
+    sub_component_ids = db.Column(db.String(255), nullable=True)
+    scorable = db.Column(db.Boolean, default=True, nullable=True)
+    ip_address = db.Column(db.String(100), nullable=True)

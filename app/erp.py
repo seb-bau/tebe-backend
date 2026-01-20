@@ -1,10 +1,12 @@
 from wowipy.wowipy import WowiPy, Result
 from wowipy.models import FacilityCatalogElement, ComponentCatalogElement, UnderComponent
-from flask import current_app
+from flask import current_app, request
 import logging
 from app.extensions import db
-from app.models import FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem
+from app.models import FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User
 from threading import Lock
+from datetime import datetime
+from flask_jwt_extended import get_jwt_identity
 
 logger = logging.getLogger('root')
 
@@ -225,10 +227,39 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
         else:
             sub_components.append(config.getint("Handling", "bool_sub_component_no_id"))
 
+    current_user_id = int(get_jwt_identity())
+    user: User
+    user = User.query.get(current_user_id)
+    user.last_action = datetime.now()
+
+    if psub_components:
+        psub_string = ','.join(str(e) for e in psub_components)
+    else:
+        psub_string = None
+
+    new_event: EventItem
+    new_event = EventItem(
+        user_id=user.id,
+        user_name=user.email,
+        action="edit",
+        ip_address=user.last_ip,
+        last_lat=user.last_lat,
+        last_lon=user.last_lon,
+        use_unit_id=the_component.use_unit_id,
+        facility_id=the_component.facility_id,
+        facility_catalog_id=component_cat_item.facility_catalog_item_id,
+        component_id=component_id,
+        component_catalog_id=component_cat_item.id,
+        sub_component_ids=psub_string
+    )
+    db.session.add(new_event)
+
     if unknown:
         # Wenn eine vorher vorhandene Komponente in der App explizit auf "Unbekannt" gesetzt wurde, muss sie entfernt
         # werden.
+        new_event.action = "delete"
         wowi.delete_component(the_component.facility_id, the_component.id_)
+        db.session.commit()
         return True
 
     cr_f_result: Result
@@ -242,6 +273,7 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
             component_status_id=dest_component_status,
             under_component_ids=sub_components
         )
+        db.session.commit()
         return cr_f_result.data["Id"]
     except Exception as e:
         logger.error(f"edit_component: Exception while editing component: {str(e)}")

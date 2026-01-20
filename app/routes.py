@@ -9,6 +9,7 @@ from flask_jwt_extended import (
 from app.erp import create_facility, create_component, edit_component
 from wowipy.wowipy import WowiPy
 from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, Geolocation
+from app.models import EventItem
 from app.extensions import db
 from flask import current_app
 from flask_login import login_user, logout_user, login_required, current_user
@@ -17,6 +18,7 @@ from sqlalchemy import or_
 from app.erp import with_wowi_retry
 from app.geo import get_buildings_in_radius_m, haversine_distance_m
 from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor, Person
+from datetime import datetime
 import logging
 import numbers
 
@@ -71,22 +73,15 @@ def register_routes(app):
         access_expires = int(current_app.config["JWT_ACCESS_TOKEN_EXPIRES"].total_seconds())
         refresh_expires = int(current_app.config["JWT_REFRESH_TOKEN_EXPIRES"].total_seconds())
 
+        user.last_action = datetime.now()
+        db.session.commit()
+
         return jsonify({
             "access_token": access_token,
             "refresh_token": refresh_token,
             "access_expires_in": access_expires,
             "refresh_expires_in": refresh_expires
         }), 200
-
-    @app.route("/protected", methods=["GET"])
-    @jwt_required()
-    def protected():
-        user_id = int(get_jwt_identity())
-        user = User.query.get(user_id)
-
-        if not user or not user.is_active:
-            return jsonify({"msg": "user disabled"}), 403
-        return jsonify({"msg": f"Hello user {user_id}"}), 200
 
     @app.route("/auth/refresh", methods=["POST"])
     @jwt_required(refresh=True)
@@ -95,6 +90,15 @@ def register_routes(app):
         user = User.query.get(current_user_id)
         if not user or not user.is_active:
             return jsonify({"msg": "user disabled or not found"}), 403
+        user.last_action = datetime.now()
+        new_event = EventItem(
+            user_id=current_user_id,
+            user_name=user.email,
+            action="refresh",
+            ip_address=request.environ['REMOTE_ADDR']
+        )
+        db.session.add(new_event)
+        db.session.commit()
         access_expires = int(current_app.config["JWT_ACCESS_TOKEN_EXPIRES"].total_seconds())
         new_access_token = create_access_token(identity=str(current_user_id))
         return jsonify({
@@ -111,18 +115,19 @@ def register_routes(app):
         jti = get_jwt()["jti"]
         db.session.add(TokenBlocklist(jti=jti))
         db.session.commit()
-        return jsonify({"msg": "access token revoked"}), 200
-
-    # -------------------------
-    # LOGOUT REFRESH: Invalidate refresh token
-    # -------------------------
-    @app.route("/auth/logout_refresh", methods=["POST"])
-    @jwt_required(refresh=True)
-    def logout_refresh():
-        jti = get_jwt()["jti"]
-        db.session.add(TokenBlocklist(jti=jti))
+        current_user_id = int(get_jwt_identity())
+        user = User.query.get(current_user_id)
+        if not user or not user.is_active:
+            return jsonify({"msg": "user disabled or not found"}), 403
+        new_event = EventItem(
+            user_id=current_user_id,
+            user_name=user.email,
+            action="logout",
+            ip_address=request.environ['REMOTE_ADDR']
+        )
+        db.session.add(new_event)
         db.session.commit()
-        return jsonify({"msg": "refresh token revoked"}), 200
+        return jsonify({"msg": "access token revoked"}), 200
 
     @app.route("/admin/login", methods=["GET", "POST"])
     def admin_login():
@@ -569,6 +574,27 @@ def register_routes(app):
                                                     count=int(entry.get("quantity")),
                                                     psub_components=psub
                                                     )
+                    current_user_id = int(get_jwt_identity())
+                    user: User
+                    user = User.query.get(current_user_id)
+                    user.last_action = datetime.now()
+
+                    new_event = EventItem(
+                        user_id=user.id,
+                        user_name=user.email,
+                        action="create",
+                        ip_address=request.environ['REMOTE_ADDR'],
+                        last_lat=user.last_lat,
+                        last_lon=user.last_lon,
+                        use_unit_id=uu_id,
+                        facility_id=uu_facility,
+                        facility_catalog_id=comp_cat_item.facility_catalog_item_id,
+                        component_id=component_id,
+                        component_catalog_id=comp_cat_item.id,
+                        sub_component_ids=','.join(str(e) for e in psub)
+                    )
+                    db.session.add(new_event)
+                    db.session.commit()
                     components_created += 1
                     if not component_id:
                         return abort(500, "Error while creating component")
@@ -619,6 +645,15 @@ def register_routes(app):
         param_lat = request.args.get("lat")
         param_lon = request.args.get("lon")
 
+        current_user_id = int(get_jwt_identity())
+        user: User
+        user = User.query.get(current_user_id)
+        user.last_action = datetime.now()
+        user.last_lat = param_lat
+        user.last_lon = param_lon
+        user.last_ip = request.environ['REMOTE_ADDR']
+        db.session.commit()
+
         q = cache.session.query(Building)
 
         q = apply_fulltext(q, param_fulltext)
@@ -667,7 +702,9 @@ def register_routes(app):
                 location: Geolocation
             location = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
             if location:
-                distance = round(haversine_distance_m(location.lat, location.lon, param_lat, param_lon))
+                distance = haversine_distance_m(location.lat, location.lon, param_lat, param_lon)
+                if distance:
+                    distance = round(distance)
             else:
                 distance = None
             retval.append({
