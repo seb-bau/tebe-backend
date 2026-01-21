@@ -55,6 +55,17 @@
                     Merkmalausprägungen
                 </a>
             </li>
+            <li>
+                <a href="{{ url_for('admin_events_list') }}" class="nav-link text-white">
+                    Events
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('admin_highscore') }}" class="nav-link text-white">
+                    Highscore
+                </a>
+            </li>
+
         </ul>
         <hr>
         {% if current_user.is_authenticated %}

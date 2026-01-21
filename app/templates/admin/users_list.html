@@ -15,6 +15,7 @@
         <tr>
             <th>ID</th>
             <th>E-Mail</th>
+            <th>Name</th>
             <th>Aktiv</th>
             <th>Admin</th>
             <th>Aktionen</th>
@@ -25,6 +26,7 @@
         <tr>
             <td>{{ u.id }}</td>
             <td>{{ u.email }}</td>
+            <td>{{ u.name }}</td>
             <td>
                 {% if u.is_active %}
                     <span class="badge bg-success">Ja</span>

@@ -2,7 +2,219 @@
 
 {% block title %}Dashboard{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+        crossorigin="anonymous"></script>
+{% endblock %}
+
 {% block content %}
-<h1 class="mb-4">Hello World</h1>
-<p>Willkommen im Admin-Dashboard.</p>
+<h1 class="mb-4">Dashboard</h1>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">Benutzer</div>
+                <div class="fs-3 fw-semibold">{{ stats.total_users }}</div>
+                <div class="text-muted small">Aktiv: {{ stats.active_users }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">Aktive Benutzer</div>
+                <div class="fs-3 fw-semibold">{{ stats.active_users_7d }}</div>
+                <div class="text-muted small">Letzte 7 Tage</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">Aktive Benutzer</div>
+                <div class="fs-3 fw-semibold">{{ stats.active_users_30d }}</div>
+                <div class="text-muted small">Letzte 30 Tage</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">Änderungen Total</div>
+                <div class="fs-3 fw-semibold">{{ stats.total_changes }}</div>
+                <div class="text-muted small">Erstellung/Änderung</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">Änderungen pro Tag (letze 365 Tage)</h5>
+                    <div class="text-muted small">Erstellen/Ändern</div>
+                </div>
+                <div style="height: 320px;">
+                    <canvas id="chartYear"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">Aktionen (letzte 30 Tage)</h5>
+                    <div class="text-muted small">Alle Aktionen</div>
+                </div>
+                <div style="height: 320px;">
+                    <canvas id="chartActions"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Top Benutzer (letzte 30 Tage)</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Benutzer</th>
+                            <th style="width: 120px;">Änderungen</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for r in top_users_rows %}
+                            <tr>
+                                <td class="text-nowrap">{{ r.user_name }}</td>
+                                <td class="text-nowrap">{{ r.changes }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="2" class="text-center text-muted">Keine Daten.</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="row g-2 mt-3">
+                    <div class="col-6">
+                        <div class="border rounded p-2">
+                            <div class="text-muted small">Änderungen</div>
+                            <div class="fw-semibold">{{ stats.changes_7d }}</div>
+                            <div class="text-muted small">Letzte 7 Tage</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border rounded p-2">
+                            <div class="text-muted small">Änderungen</div>
+                            <div class="fw-semibold">{{ stats.changes_30d }}</div>
+                            <div class="text-muted small">Letzte 30 Tage</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-muted small mt-3">
+                    Aktionen insgesamt: {{ stats.total_events }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <h5 class="mb-3">Letzte Änderungen</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th style="width: 190px;">Zeit</th>
+                            <th>Benutzer</th>
+                            <th style="width: 90px;">Aktion</th>
+                            <th style="width: 120px;">Wohnung (id)</th>
+                            <th style="width: 120px;">Komponente (id)</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for e in recent_changes %}
+                            <tr>
+                                <td class="text-nowrap">{{ e.stamp }}</td>
+                                <td class="text-nowrap">{{ e.user_name }}</td>
+                                <td class="text-nowrap">{{ e.action }}</td>
+                                <td class="text-nowrap">{{ e.use_unit_id or '–' }}</td>
+                                <td class="text-nowrap">{{ e.component_id or '–' }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">Keine Einträge.</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const yearData = {{ chart_year | tojson }};
+const actionsData = {{ chart_actions_30d | tojson }};
+
+new Chart(document.getElementById("chartYear"), {
+    type: "line",
+    data: {
+        labels: yearData.labels,
+        datasets: [{
+            label: "Änderungen",
+            data: yearData.values,
+            pointRadius: 0,
+            borderWidth: 2,
+            tension: 0.2
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+            x: { ticks: { maxTicksLimit: 12 } },
+            y: { beginAtZero: true }
+        }
+    }
+});
+
+new Chart(document.getElementById("chartActions"), {
+    type: "bar",
+    data: {
+        labels: actionsData.labels,
+        datasets: [{
+            label: "Ereignisse",
+            data: actionsData.values,
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+});
+</script>
 {% endblock %}

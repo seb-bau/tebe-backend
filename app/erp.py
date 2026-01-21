@@ -160,7 +160,7 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
 
 
 def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, count: int,
-                     psub_components: list[int] = None) -> int | None:
+                     puser: User, puu_id: int, psub_components: list[int] = None) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
     bool_handling = config.get("Handling", "bool_handling")
@@ -191,6 +191,22 @@ def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, 
             facility_id=facility_id,
             under_component_ids=sub_components
         )
+        new_event = EventItem(
+            user_id=puser.id,
+            user_name=puser.name,
+            action="create",
+            ip_address=request.environ['REMOTE_ADDR'],
+            last_lat=puser.last_lat,
+            last_lon=puser.last_lon,
+            use_unit_id=puu_id,
+            facility_id=facility_id,
+            facility_catalog_id=component_cat_item.facility_catalog_item_id,
+            component_id=cr_f_result.data["Id"],
+            component_catalog_id=component_cat_item.id,
+            sub_component_ids=','.join(str(e) for e in sub_components)
+        )
+        db.session.add(new_event)
+        db.session.commit()
         return cr_f_result.data["Id"]
     except Exception as e:
         logger.error(f"create_component: Exception while creating component: {str(e)}")
@@ -232,15 +248,15 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
     user = User.query.get(current_user_id)
     user.last_action = datetime.now()
 
-    if psub_components:
-        psub_string = ','.join(str(e) for e in psub_components)
+    if sub_components:
+        psub_string = ','.join(str(e) for e in sub_components)
     else:
         psub_string = None
 
     new_event: EventItem
     new_event = EventItem(
         user_id=user.id,
-        user_name=user.email,
+        user_name=user.name,
         action="edit",
         ip_address=user.last_ip,
         last_lat=user.last_lat,
@@ -252,14 +268,27 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
         component_catalog_id=component_cat_item.id,
         sub_component_ids=psub_string
     )
-    db.session.add(new_event)
 
     if unknown:
         # Wenn eine vorher vorhandene Komponente in der App explizit auf "Unbekannt" gesetzt wurde, muss sie entfernt
         # werden.
         new_event.action = "delete"
         wowi.delete_component(the_component.facility_id, the_component.id_)
+        db.session.add(new_event)
         db.session.commit()
+        return True
+
+    # Prüfen, ob ein Unterschied zur Komponente in Wowiport besteht
+    component_subs = []
+    if the_component.under_components:
+        csub: UnderComponent
+        for csub in the_component.under_components:
+            component_subs.append(csub.id_)
+
+    component_subs.sort()
+    sub_components.sort()
+    if component_subs == sub_components:
+        print("no diff")
         return True
 
     cr_f_result: Result
@@ -273,6 +302,7 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
             component_status_id=dest_component_status,
             under_component_ids=sub_components
         )
+        db.session.add(new_event)
         db.session.commit()
         return cr_f_result.data["Id"]
     except Exception as e:

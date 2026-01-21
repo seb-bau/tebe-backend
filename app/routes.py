@@ -14,11 +14,11 @@ from app.extensions import db
 from flask import current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from functools import wraps
-from sqlalchemy import or_
+from sqlalchemy import or_, inspect, func
 from app.erp import with_wowi_retry
 from app.geo import get_buildings_in_radius_m, haversine_distance_m
 from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor, Person
-from datetime import datetime
+from datetime import datetime, timedelta, time
 import logging
 import numbers
 
@@ -28,6 +28,14 @@ logger = logging.getLogger('root')
 
 def is_numeric(value):
     return isinstance(value, numbers.Number)
+
+
+def has_table(table_name: str) -> bool:
+    try:
+        return inspect(db.engine).has_table(table_name)
+    except Exception as e:
+        print(str(e))
+        return False
 
 
 def register_routes(app):
@@ -44,7 +52,114 @@ def register_routes(app):
     @app.route("/")
     @admin_required
     def index():
-        return render_template('index.html')
+        now = datetime.utcnow()
+        year_start = now - timedelta(days=364)
+        last_7 = now - timedelta(days=7)
+        last_30 = now - timedelta(days=30)
+
+        total_users = db.session.query(func.count(User.id)).scalar() or 0
+        active_users = db.session.query(func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0
+
+        total_events = db.session.query(func.count(EventItem.id)).scalar() or 0
+        total_changes = (
+            db.session.query(func.count(EventItem.id))
+            .filter(EventItem.action.in_(["create", "edit"]))
+            .scalar()
+            or 0
+        )
+
+        active_users_7d = (
+            db.session.query(func.count(func.distinct(EventItem.user_id)))
+            .filter(EventItem.stamp >= last_7)
+            .scalar()
+            or 0
+        )
+        active_users_30d = (
+            db.session.query(func.count(func.distinct(EventItem.user_id)))
+            .filter(EventItem.stamp >= last_30)
+            .scalar()
+            or 0
+        )
+
+        changes_7d = (
+            db.session.query(func.count(EventItem.id))
+            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.stamp >= last_7)
+            .scalar()
+            or 0
+        )
+        changes_30d = (
+            db.session.query(func.count(EventItem.id))
+            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.stamp >= last_30)
+            .scalar()
+            or 0
+        )
+
+        daily_rows = (
+            db.session.query(func.date(EventItem.stamp).label("d"), func.count(EventItem.id).label("c"))
+            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.stamp >= year_start)
+            .group_by("d")
+            .order_by("d")
+            .all()
+        )
+
+        daily_map = {str(d): int(c) for (d, c) in daily_rows if d is not None}
+
+        labels = []
+        values = []
+        for i in range(365):
+            day = (year_start.date() + timedelta(days=i)).isoformat()
+            labels.append(day)
+            values.append(daily_map.get(day, 0))
+
+        action_rows_30d = (
+            db.session.query(EventItem.action, func.count(EventItem.id))
+            .filter(EventItem.stamp >= last_30)
+            .group_by(EventItem.action)
+            .order_by(func.count(EventItem.id).desc())
+            .all()
+        )
+        action_labels = [a or "unknown" for (a, _) in action_rows_30d]
+        action_values = [int(c) for (_, c) in action_rows_30d]
+
+        top_users_30d = (
+            db.session.query(EventItem.user_name, func.count(EventItem.id).label("c"))
+            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.stamp >= last_30)
+            .group_by(EventItem.user_name)
+            .order_by(func.count(EventItem.id).desc(), EventItem.user_name.asc())
+            .limit(10)
+            .all()
+        )
+        top_users_rows = [{"user_name": u, "changes": int(c)} for (u, c) in top_users_30d]
+
+        recent_changes = (
+            db.session.query(EventItem)
+            .filter(EventItem.action.in_(["create", "edit"]))
+            .order_by(EventItem.stamp.desc(), EventItem.id.desc())
+            .limit(20)
+            .all()
+        )
+
+        return render_template(
+            "index.html",
+            stats={
+                "total_users": total_users,
+                "active_users": active_users,
+                "total_events": total_events,
+                "total_changes": total_changes,
+                "active_users_7d": active_users_7d,
+                "active_users_30d": active_users_30d,
+                "changes_7d": changes_7d,
+                "changes_30d": changes_30d,
+            },
+            chart_year={"labels": labels, "values": values},
+            chart_actions_30d={"labels": action_labels, "values": action_values},
+            top_users_rows=top_users_rows,
+            recent_changes=recent_changes,
+        )
 
     @app.route("/auth/login", methods=["POST"])
     def login():
@@ -91,13 +206,6 @@ def register_routes(app):
         if not user or not user.is_active:
             return jsonify({"msg": "user disabled or not found"}), 403
         user.last_action = datetime.now()
-        new_event = EventItem(
-            user_id=current_user_id,
-            user_name=user.email,
-            action="refresh",
-            ip_address=request.environ['REMOTE_ADDR']
-        )
-        db.session.add(new_event)
         db.session.commit()
         access_expires = int(current_app.config["JWT_ACCESS_TOKEN_EXPIRES"].total_seconds())
         new_access_token = create_access_token(identity=str(current_user_id))
@@ -119,13 +227,6 @@ def register_routes(app):
         user = User.query.get(current_user_id)
         if not user or not user.is_active:
             return jsonify({"msg": "user disabled or not found"}), 403
-        new_event = EventItem(
-            user_id=current_user_id,
-            user_name=user.email,
-            action="logout",
-            ip_address=request.environ['REMOTE_ADDR']
-        )
-        db.session.add(new_event)
         db.session.commit()
         return jsonify({"msg": "access token revoked"}), 200
 
@@ -183,6 +284,7 @@ def register_routes(app):
     def admin_users_create():
         if request.method == "POST":
             email = request.form.get("email")
+            name = request.form.get("name")
             password = request.form.get("password")
             is_active = bool(request.form.get("is_active"))
             is_admin = bool(request.form.get("is_admin"))
@@ -195,10 +297,12 @@ def register_routes(app):
                 flash("Es existiert bereits ein Benutzer mit dieser E-Mail.", "danger")
                 return redirect(url_for("admin_users_create"))
 
+            # noinspection PyArgumentList
             user = User(
                 email=email,
                 is_active=is_active,
-                is_admin=is_admin
+                is_admin=is_admin,
+                name=name
             )
             user.set_password(password)
             db.session.add(user)
@@ -216,6 +320,7 @@ def register_routes(app):
 
         if request.method == "POST":
             email = request.form.get("email")
+            name = request.form.get("name")
             password = request.form.get("password")  # optional
             is_active = bool(request.form.get("is_active"))
             is_admin = bool(request.form.get("is_admin"))
@@ -229,6 +334,7 @@ def register_routes(app):
                 return redirect(url_for("admin_users_edit", user_id=user.id))
 
             user.email = email
+            user.name = name
             user.is_active = is_active
             user.is_admin = is_admin
 
@@ -551,7 +657,6 @@ def register_routes(app):
                     if entry.get("is_unknown"):
                         # Wenn es die Komponente noch nicht gab und sie unbekannt istm können wir sie direkt
                         # ignorieren
-                        print("ignore")
                         continue
                     # Wenn der Client die component_id nicht mitsendet, heißt das in der Regel, dass diese Komponente
                     # noch nicht für die UseUnit existiert.
@@ -568,33 +673,19 @@ def register_routes(app):
                         facilities_created += 1
                     if not uu_facility:
                         return abort(500, "Error while creating facility.")
-                    component_id = create_component(wowi,
-                                                    component_catalog_id=comp_cat_item.id,
-                                                    facility_id=uu_facility,
-                                                    count=int(entry.get("quantity")),
-                                                    psub_components=psub
-                                                    )
+                    print(f"sub {psub}")
                     current_user_id = int(get_jwt_identity())
                     user: User
                     user = User.query.get(current_user_id)
                     user.last_action = datetime.now()
-
-                    new_event = EventItem(
-                        user_id=user.id,
-                        user_name=user.email,
-                        action="create",
-                        ip_address=request.environ['REMOTE_ADDR'],
-                        last_lat=user.last_lat,
-                        last_lon=user.last_lon,
-                        use_unit_id=uu_id,
-                        facility_id=uu_facility,
-                        facility_catalog_id=comp_cat_item.facility_catalog_item_id,
-                        component_id=component_id,
-                        component_catalog_id=comp_cat_item.id,
-                        sub_component_ids=','.join(str(e) for e in psub)
-                    )
-                    db.session.add(new_event)
                     db.session.commit()
+                    component_id = create_component(wowi,
+                                                    component_catalog_id=comp_cat_item.id,
+                                                    facility_id=uu_facility,
+                                                    count=int(entry.get("quantity")),
+                                                    psub_components=psub,
+                                                    puser=user,
+                                                    puu_id=uu_id)
                     components_created += 1
                     if not component_id:
                         return abort(500, "Error while creating component")
@@ -721,3 +812,175 @@ def register_routes(app):
         return jsonify({
             "items": retval
         })
+
+    @app.route("/admin/events")
+    @admin_required
+    def admin_events_list():
+        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
+        page = request.args.get("page", 1, type=int)
+        date_from = (request.args.get("date_from") or "").strip()
+        date_to = (request.args.get("date_to") or "").strip()
+        user_name = (request.args.get("user_name") or "").strip()
+        use_unit_idnum = (request.args.get("use_unit_idnum") or "").strip()
+
+        query = EventItem.query
+
+        from datetime import datetime, timedelta, time
+
+        def parse_date(value: str):
+            try:
+                return datetime.strptime(value, "%Y-%m-%d").date()
+            except Exception as e:
+                print(str(e))
+                return None
+
+        df = parse_date(date_from) if date_from else None
+        dt = parse_date(date_to) if date_to else None
+
+        if df:
+            query = query.filter(EventItem.stamp >= datetime.combine(df, time.min))
+        if dt:
+            query = query.filter(EventItem.stamp < datetime.combine(dt + timedelta(days=1), time.min))
+
+        if user_name:
+            query = query.filter(EventItem.user_name.ilike(f"%{user_name}%"))
+
+        query = query.order_by(EventItem.stamp.desc(), EventItem.id.desc())
+
+        pagination = query.paginate(page=page, per_page=50, error_out=False)
+        events = pagination.items
+
+        fac_ids = {e.facility_catalog_id for e in events if e.facility_catalog_id}
+        comp_ids = {e.component_catalog_id for e in events if e.component_catalog_id}
+
+        sub_ids = set()
+        for e in events:
+            if e.sub_component_ids:
+                for part in str(e.sub_component_ids).split(","):
+                    part = part.strip()
+                    if part.isdigit():
+                        sub_ids.add(int(part))
+
+        facility_map = (
+            {f.id: f.display_name for f in FacilityCatalogItem.query.filter(FacilityCatalogItem.id.in_(fac_ids)).all()}
+            if fac_ids
+            else {}
+        )
+        component_map = (
+            {c.id: c.display_name for c in
+             ComponentCatalogItem.query.filter(ComponentCatalogItem.id.in_(comp_ids)).all()}
+            if comp_ids
+            else {}
+        )
+        under_component_map = (
+            {u.id: u.display_name for u in UnderComponentItem.query.filter(UnderComponentItem.id.in_(sub_ids)).all()}
+            if sub_ids
+            else {}
+        )
+
+        rows = []
+        for e in events:
+            sc_names = []
+            if e.sub_component_ids:
+                for part in str(e.sub_component_ids).split(","):
+                    part = part.strip()
+                    if part.isdigit():
+                        sc_names.append(under_component_map.get(int(part), part))
+                    elif part:
+                        sc_names.append(part)
+            use_unit: UseUnit
+            use_unit = cache.session.query(UseUnit).filter(UseUnit.internal_id == e.use_unit_id).first()
+            uu_idnum: str | None
+            if use_unit:
+                uu_idnum = use_unit.id_num
+                if use_unit_idnum:
+                    if not uu_idnum.startswith(use_unit_idnum):
+                        continue
+            else:
+                uu_idnum = None
+
+            rows.append(
+                {
+                    "stamp": e.stamp,
+                    "user_name": e.user_name,
+                    "action": e.action,
+                    "use_unit_idnum": uu_idnum,
+                    "component_name": component_map.get(e.component_catalog_id) if e.component_catalog_id else None,
+                    "facility_name": facility_map.get(e.facility_catalog_id) if e.facility_catalog_id else None,
+                    "sub_component_names": ", ".join(sc_names) if sc_names else None,
+                }
+            )
+
+        return render_template(
+            "admin/events_list.html",
+            rows=rows,
+            pagination=pagination,
+            date_from=date_from,
+            date_to=date_to,
+            user_name=user_name,
+            use_unit_idnum=use_unit_idnum,
+        )
+
+    @app.route("/admin/highscore")
+    @admin_required
+    def admin_highscore():
+        date_from = (request.args.get("date_from") or "").strip()
+        date_to = (request.args.get("date_to") or "").strip()
+
+        def parse_date(value: str):
+            try:
+                return datetime.strptime(value, "%Y-%m-%d").date()
+            except Exception as ex:
+                print(str(ex))
+                return None
+
+        df = parse_date(date_from) if date_from else None
+        dt = parse_date(date_to) if date_to else None
+
+        query = EventItem.query.filter(EventItem.action.in_(["create", "edit"]))
+
+        if df:
+            query = query.filter(EventItem.stamp >= datetime.combine(df, time.min))
+        if dt:
+            query = query.filter(EventItem.stamp < datetime.combine(dt + timedelta(days=1), time.min))
+
+        query = query.order_by(EventItem.user_name.asc(), EventItem.use_unit_id.asc(), EventItem.stamp.asc(),
+                               EventItem.id.asc())
+
+        cooldown = timedelta(days=7)
+
+        points_by_user = {}
+        last_scored = {}
+
+        for e in query.yield_per(2000):
+            if not e.user_name:
+                continue
+            if not e.use_unit_id:
+                continue
+
+            user_key = e.user_name
+            unit_key = e.use_unit_id
+            t = e.stamp
+
+            if t is None:
+                continue
+
+            user_units = last_scored.get(user_key)
+            if user_units is None:
+                user_units = {}
+                last_scored[user_key] = user_units
+
+            last_time = user_units.get(unit_key)
+            if last_time is None or t >= last_time + cooldown:
+                points_by_user[user_key] = points_by_user.get(user_key, 0) + 1
+                user_units[unit_key] = t
+
+        top = sorted(points_by_user.items(), key=lambda x: (-x[1], x[0]))[:10]
+        rows = [{"rank": i + 1, "user_name": u, "points": p} for i, (u, p) in enumerate(top)]
+
+        return render_template(
+            "admin/highscore.html",
+            rows=rows,
+            date_from=date_from,
+            date_to=date_to,
+        )

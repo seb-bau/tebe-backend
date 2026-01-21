@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Highscore{% endblock %}
+
+{% block content %}
+    <h1 class="mb-4">Highscore</h1>
+
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-md-3">
+            <label for="date_from" class="form-label">Von</label>
+            <input type="date" class="form-control" id="date_from" name="date_from" value="{{ date_from or '' }}">
+        </div>
+        <div class="col-md-3">
+            <label for="date_to" class="form-label">Bis</label>
+            <input type="date" class="form-control" id="date_to" name="date_to" value="{{ date_to or '' }}">
+        </div>
+        <div class="col-md-6 d-flex gap-2">
+            <button type="submit" class="btn btn-primary mt-auto">Anwenden</button>
+            <a href="{{ url_for('admin_highscore') }}" class="btn btn-outline-secondary mt-auto">Reset</a>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th style="width: 80px;">Rang</th>
+                        <th>User</th>
+                        <th style="width: 120px;">Punkte</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for r in rows %}
+                        <tr>
+                            <td class="text-nowrap">{{ r.rank }}</td>
+                            <td class="text-nowrap">{{ r.user_name }}</td>
+                            <td class="text-nowrap">{{ r.points }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted">Keine Einträge gefunden.</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="text-muted small mt-3">
+                Punkte: 1 pro Wohnung mit mindestens einem Erstellungs- oder Änderungsevent. Nach einer Zählung ist die Wohnung für 7 Tage für Punkte gesperrt.
+            </div>
+        </div>
+    </div>
+{% endblock %}
