@@ -793,11 +793,15 @@ def register_routes(app):
                 location: Geolocation
             location = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
             if location:
+                loc_lat = location.lat
+                loc_lon = location.lon
                 distance = haversine_distance_m(location.lat, location.lon, param_lat, param_lon)
                 if distance:
                     distance = round(distance)
             else:
                 distance = None
+                loc_lat = None
+                loc_lon = None
             retval.append({
                 "id": building.internal_id,
                 "id_num": building.id_num,
@@ -805,8 +809,8 @@ def register_routes(app):
                 "postcode": building.postcode,
                 "town": building.town,
                 "use_units": uu_info,
-                "lat": location.lat,
-                "lon": location.lon,
+                "lat": loc_lat,
+                "lon": loc_lon,
                 "distance": distance
             })
         return jsonify({
