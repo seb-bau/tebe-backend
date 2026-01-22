@@ -7,9 +7,9 @@ from flask_jwt_extended import (
     get_jwt
 )
 from app.erp import create_facility, create_component, edit_component
-from wowipy.wowipy import WowiPy
+from wowipy.wowipy import WowiPy, ComponentElement
 from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, Geolocation
-from app.models import EventItem
+from app.models import EventItem, FacilityItem
 from app.extensions import db
 from flask import current_app
 from flask_login import login_user, logout_user, login_required, current_user
@@ -569,6 +569,7 @@ def register_routes(app):
             retval_existing = []
             retval_missing = []
             found_types = []
+            component: ComponentElement
             for component in components:
                 comp_cat_item = db.session.get(ComponentCatalogItem, component.component_catalog_id)
                 if not comp_cat_item:
@@ -588,6 +589,8 @@ def register_routes(app):
                         })
                 else:
                     under_components = None
+
+                fac_item = db.session.get(FacilityItem, component.facility_id)
                 retval_existing.append({
                     "id": component.id_,
                     "name": component.name,
@@ -596,9 +599,11 @@ def register_routes(app):
                     "unit": comp_cat_item.quantity_type_name,
                     "under_components": under_components,
                     "facility_cat_id": component.facility_id,
+                    "facility_cat_name": fac_item.name,
                     "is_bool": comp_cat_item.is_bool,
                     "single_under_component": comp_cat_item.single_under_component,
-                    "hide_quantity": comp_cat_item.hide_quantity
+                    "hide_quantity": comp_cat_item.hide_quantity,
+                    "comment": component.comment
                 })
                 found_types.append(comp_cat_item.id)
 
@@ -653,6 +658,8 @@ def register_routes(app):
                 if not is_numeric(entry.get("quantity")):
                     return jsonify({"msg": "quantity has to be numeric"}), 400
 
+                comment = entry.get("comment")
+
                 psub = entry.get("sub_components") or []
                 if not entry.get("component_id"):
                     if entry.get("is_unknown"):
@@ -686,7 +693,8 @@ def register_routes(app):
                                                     count=int(entry.get("quantity")),
                                                     psub_components=psub,
                                                     puser=user,
-                                                    puu_id=uu_id)
+                                                    puu_id=uu_id,
+                                                    comment=comment)
                     components_created += 1
                     if not component_id:
                         return abort(500, "Error while creating component")
@@ -694,7 +702,7 @@ def register_routes(app):
                 else:
                     unknown = bool(entry.get("is_unknown"))
                     edit_component(wowi, entry.get("component_id"), int(entry.get("quantity")), psub_components=psub,
-                                   unknown=unknown)
+                                   unknown=unknown, comment=comment)
                     if not unknown:
                         components_updated += 1
                     else:

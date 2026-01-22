@@ -86,6 +86,11 @@ class FacilityCatalogItem(db.Model):
         cascade="all, delete-orphan",
     )
 
+    facilities = db.relationship(
+        "FacilityItem",
+        back_populates="facility_catalog_item"
+    )
+
     @property
     def display_name(self):
         return self.custom_name or self.name
@@ -180,3 +185,20 @@ class EventItem(db.Model):
     sub_component_ids = db.Column(db.String(255), nullable=True)
     scorable = db.Column(db.Boolean, default=True, nullable=True)
     ip_address = db.Column(db.String(100), nullable=True)
+
+
+class FacilityItem(db.Model):
+    __tablename__ = "facility_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    facility_catalog_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("facility_catalog_item.id"),
+        nullable=False,
+    )
+
+    facility_catalog_item = db.relationship(
+        "FacilityCatalogItem",
+        back_populates="facilities",
+    )

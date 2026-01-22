@@ -1,9 +1,9 @@
 from wowipy.wowipy import WowiPy, Result
-from wowipy.models import FacilityCatalogElement, ComponentCatalogElement, UnderComponent
+from wowipy.models import FacilityCatalogElement, ComponentCatalogElement, UnderComponent, FacilityElement
 from flask import current_app, request
 import logging
 from app.extensions import db
-from app.models import FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User
+from app.models import FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem
 from threading import Lock
 from datetime import datetime
 from flask_jwt_extended import get_jwt_identity
@@ -59,11 +59,37 @@ def sync_facility_and_component_catalog():
 
     facility_catalog_items = wowi.get_facility_catalog()
     component_catalog_items = wowi.get_component_catalog()
+    all_facilities = wowi.get_facilities(fetch_all=True)
     all_components = wowi.get_components(fetch_all=True)
     all_under_components = wowi.extract_under_components(all_components)
 
+    fac_ids = []
+    entry_fac: FacilityElement
+    for entry_fac in all_facilities:
+        fac_ids.append(entry_fac.id_)
+        find_fac = db.session.get(FacilityItem, entry_fac.id_)
+        if find_fac:
+            find_fac.name = entry_fac.name
+            find_fac.facility_catalog_item_id = entry_fac.facility_catalog_id
+        else:
+            find_fac = FacilityItem(
+                id=entry_fac.id_,
+                name=entry_fac.name,
+                facility_catalog_item_id=entry_fac.facility_catalog_id
+            )
+            db.session.add(find_fac)
+        db.session.commit()
+
+    all_facs = db.session.query(FacilityItem).all()
+    for fac_check in all_facs:
+        if fac_check.id not in fac_ids:
+            db.session.delete(fac_check)
+    db.session.commit()
+
+    fac_cat_ids = []
     entry: FacilityCatalogElement
     for entry in facility_catalog_items:
+        fac_cat_ids.append(entry.id_)
         find_facility = db.session.get(FacilityCatalogItem, entry.id_)
         if find_facility:
             find_facility.name = entry.name
@@ -87,8 +113,16 @@ def sync_facility_and_component_catalog():
             db.session.add(find_facility)
         db.session.commit()
 
+    all_fac_cats = db.session.query(FacilityCatalogItem).all()
+    for fac_cat_check in all_fac_cats:
+        if fac_cat_check.id not in fac_cat_ids:
+            db.session.delete(fac_cat_check)
+    db.session.commit()
+
+    comp_cat_ids = []
     entry2: ComponentCatalogElement
     for entry2 in component_catalog_items:
+        comp_cat_ids.append(entry2.id_)
         find_component = db.session.get(ComponentCatalogItem, entry2.id_)
         if find_component:
             find_component.name = entry2.name
@@ -120,11 +154,22 @@ def sync_facility_and_component_catalog():
             db.session.add(find_component)
         db.session.commit()
 
+    all_comp_cats = db.session.query(ComponentCatalogItem).all()
+    for comp_cat_check in all_comp_cats:
+        if comp_cat_check.id not in comp_cat_ids:
+            db.session.delete(comp_cat_check)
+    db.session.commit()
+
+    under_components_in_use = []
     under_component: UnderComponent
     component_catalog_item: ComponentCatalogItem
     for component_catalog_id in all_under_components:
         component_catalog_item = db.session.get(ComponentCatalogItem, component_catalog_id)
+        under_comp_for_cat_item = []
         for under_component in all_under_components[component_catalog_id]:
+            under_comp_for_cat_item.append(under_component.id_)
+            if under_component.id_ not in under_components_in_use:
+                under_components_in_use.append(under_component.id_)
             find_under_component = db.session.get(UnderComponentItem, under_component.id_)
             if find_under_component:
                 find_under_component.name = under_component.name
@@ -137,6 +182,16 @@ def sync_facility_and_component_catalog():
             if ((not component_catalog_item.under_components) or
                     (find_under_component not in component_catalog_item.under_components)):
                 component_catalog_item.under_components.append(find_under_component)
+            rev_und_comp: UnderComponentItem
+            for rev_und_comp in component_catalog_item.under_components:
+                if rev_und_comp.id not in under_comp_for_cat_item:
+                    component_catalog_item.under_components.remove(rev_und_comp)
+    db.session.commit()
+
+    all_under = db.session.query(UnderComponentItem).all()
+    for under_check in all_under:
+        if under_check.id not in under_components_in_use:
+            db.session.delete(under_check)
     db.session.commit()
 
 
@@ -160,7 +215,7 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
 
 
 def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, count: int,
-                     puser: User, puu_id: int, psub_components: list[int] = None) -> int | None:
+                     puser: User, puu_id: int, psub_components: list[int] = None, comment: str = None) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
     bool_handling = config.get("Handling", "bool_handling")
@@ -189,7 +244,8 @@ def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, 
             component_catalog_id=component_cat_item.id,
             component_status_id=dest_component_status,
             facility_id=facility_id,
-            under_component_ids=sub_components
+            under_component_ids=sub_components,
+            comment=comment
         )
         new_event = EventItem(
             user_id=puser.id,
@@ -214,7 +270,7 @@ def create_component(wowi: WowiPy, component_catalog_id: int, facility_id: int, 
 
 
 def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components: list[int] = None,
-                   unknown: bool = False) -> int | None:
+                   unknown: bool = False, comment: str = None) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
     bool_handling = config.get("Handling", "bool_handling")
@@ -287,8 +343,7 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
 
     component_subs.sort()
     sub_components.sort()
-    if component_subs == sub_components:
-        print("no diff")
+    if component_subs == sub_components and the_component.comment == comment and the_component.count == count:
         return True
 
     cr_f_result: Result
@@ -300,7 +355,8 @@ def edit_component(wowi: WowiPy, component_id: int, count: int, psub_components:
             count=count,
             component_catalog_id=component_cat_item.id,
             component_status_id=dest_component_status,
-            under_component_ids=sub_components
+            under_component_ids=sub_components,
+            comment=comment
         )
         db.session.add(new_event)
         db.session.commit()
