@@ -618,6 +618,7 @@ def register_routes(app):
                         "unit": cat_item.quantity_type_name,
                         "under_components": under_components,
                         "facility_cat_id": cat_item.facility_catalog_item_id,
+                        "facility_cat_name": cat_item.facility.name,
                         "is_bool": cat_item.is_bool,
                         "single_under_component": cat_item.single_under_component,
                         "hide_quantity": cat_item.hide_quantity
