@@ -210,6 +210,12 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
             facility_status_id=config.get("Handling", "component_status"),
             use_unit_id=use_unit_id
         )
+        new_facility_for_cache = FacilityItem(
+            name=facility_cat_item.name,
+            facility_catalog_item_id=facility_cat_item.id
+        )
+        db.session.add(new_facility_for_cache)
+        db.session.commit()
         return cr_f_result.data["Id"]
     except Exception as e:
         logger.error(f"create_facility: Exception while creating facility: {str(e)}")
