@@ -7,6 +7,7 @@ from app.models import FacilityCatalogItem, ComponentCatalogItem, UnderComponent
 from threading import Lock
 from datetime import datetime
 from flask_jwt_extended import get_jwt_identity
+import traceback
 
 logger = logging.getLogger('root')
 
@@ -43,6 +44,7 @@ def with_wowi_retry(fn, *args, **kwargs):
         return fn(client, *args, **kwargs)
 
     except Exception as exc:
+        logger.error(traceback.format_exc())
         logger.warning("WowiPy call failed, attempting retry: %s", exc)
 
         # Reset client
