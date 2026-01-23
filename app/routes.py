@@ -23,7 +23,26 @@ import logging
 import numbers
 
 
+# ACHTUNG: BEI NEUER VERSION ANPASSEN
+APP_VERSION_MIN = 1
+APP_VERSION_MAX = 0
+
+
 logger = logging.getLogger('root')
+
+
+def check_version(version, pdata: dict) -> bool:
+    try:
+        tversion = int(version)
+    except ValueError:
+        logger.error(f"check_version: '{version}' is not numeric for login with user '{pdata.get('email')}'")
+        return False
+
+    if APP_VERSION_MIN and tversion < APP_VERSION_MIN:
+        return False
+    if APP_VERSION_MAX and tversion > APP_VERSION_MAX:
+        return False
+    return True
 
 
 def is_numeric(value):
@@ -164,9 +183,12 @@ def register_routes(app):
     @app.route("/auth/login", methods=["POST"])
     def login():
         data = request.get_json() or {}
-
         email = data.get("email")
         password = data.get("password")
+        app_version = request.args.get("app_version")
+
+        if not check_version(app_version, data):
+            return jsonify({"msg": "app version mismatch"}), 403
 
         if not email or not password:
             return jsonify({"msg": "email and password required"}), 400
@@ -189,6 +211,7 @@ def register_routes(app):
         refresh_expires = int(current_app.config["JWT_REFRESH_TOKEN_EXPIRES"].total_seconds())
 
         user.last_action = datetime.now()
+        user.last_version = app_version
         db.session.commit()
 
         return jsonify({
@@ -203,6 +226,14 @@ def register_routes(app):
     def refresh():
         current_user_id = int(get_jwt_identity())
         user = User.query.get(current_user_id)
+        app_version = request.args.get("app_version")
+        data = {
+            "email": user.email
+        }
+
+        if not check_version(app_version, data):
+            return jsonify({"msg": "app version mismatch"}), 403
+
         if not user or not user.is_active:
             return jsonify({"msg": "user disabled or not found"}), 403
         user.last_action = datetime.now()
