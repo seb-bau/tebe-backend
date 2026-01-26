@@ -7,11 +7,12 @@ from flask_jwt_extended import (
     get_jwt
 )
 from app.erp import create_facility, create_component, edit_component
-from wowipy.wowipy import WowiPy, ComponentElement
+from wowipy.wowipy import WowiPy, ComponentElement, MediaData, LicenseAgreement
+import wowipy.models
 from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, Geolocation
 from app.models import EventItem, FacilityItem
 from app.extensions import db
-from flask import current_app
+from flask import current_app, send_file
 from flask_login import login_user, logout_user, login_required, current_user
 from functools import wraps
 from sqlalchemy import or_, inspect, func
@@ -21,6 +22,10 @@ from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor,
 from datetime import datetime, timedelta, time, timezone
 import logging
 import numbers
+import os
+import tempfile
+import uuid
+from werkzeug.utils import secure_filename
 
 
 # ACHTUNG: BEI NEUER VERSION ANPASSEN
@@ -37,7 +42,7 @@ logger = logging.getLogger('root')
 def check_version(version, pdata: dict) -> bool:
     try:
         tversion = int(version)
-    except ValueError:
+    except (ValueError, TypeError):
         logger.error(f"check_version: '{version}' is not numeric for login with user '{pdata.get('email')}'")
         return False
 
@@ -772,6 +777,137 @@ def register_routes(app):
             Building.postcode.ilike(like),
             Building.town.ilike(like),
         ))
+
+    @app.route("/app/use-unit/photos", methods=["POST"])
+    @jwt_required()
+    def route_use_unit_photos():
+        photo = request.files.get("photo")
+        use_unit_id_raw = request.form.get("use_unit_id")
+
+        if photo is None or not photo.filename:
+            return jsonify({"status": "error", "message": "Missing photo"}), 400
+
+        try:
+            use_unit_id = int(use_unit_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "Invalid use_unit_id"}), 400
+
+        temp_dir = os.path.join(tempfile.gettempdir(), "tebe_use_unit_photos")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        original_name = secure_filename(photo.filename) or "photo"
+        stored_name = f"{use_unit_id}_{uuid.uuid4().hex}_{original_name}"
+        stored_path = os.path.join(temp_dir, stored_name)
+
+        photo.save(stored_path)
+
+        def _do_app_uu_upload_photo(wowi: WowiPy, uu_id: int, media_path: str):
+            wowi_file: MediaData
+            rslt: wowipy.models.Result
+            wowi_file = MediaData(
+                file_name=os.path.basename(media_path),
+                creation_date_str=datetime.now().strftime("%y-%m-%d"),
+                entity_type_name="UseUnit",
+                entity_id=uu_id,
+                picture_type_name="Sonstiges",
+            )
+            wowi.upload_media(wowi_file, media_path)
+
+        with_wowi_retry(_do_app_uu_upload_photo, uu_id=use_unit_id, media_path=stored_path)
+
+        return jsonify({"status": "ok", "use_unit_id": use_unit_id, "filename": stored_name}), 201
+
+    @app.route("/app/use-unit/contacts/<int:use_unit_id>", methods=["GET"])
+    @jwt_required()
+    def app_uu_contact(use_unit_id):
+        def _do_app_uu_contact(wowi: WowiPy, uu_id: int):
+            contracts = wowi.get_license_agreements(license_agreement_active_on=datetime.now(),
+                                                    add_args={"useUnitId": uu_id},
+                                                    add_contractors=True
+                                                    )
+            if not contracts:
+                return abort(404)
+            the_contract: LicenseAgreement
+            the_contract = contracts[0]
+            if the_contract.restriction_of_use.is_vacancy:
+                return abort(404)
+            if not the_contract.contractors:
+                return abort(404)
+
+            contact_items = []
+            contractor_entry: wowipy.wowipy.Contractor
+            for contractor_entry in the_contract.contractors:
+                the_person = contractor_entry.person
+                if the_person.is_natural_person:
+                    np = the_person.natural_person
+                    title = f"{np.title} " if np.title else ""
+                    person_name = f"{title}{np.last_name}, {np.first_name}"
+                    person_gender = np.gender.name
+                    try:
+                        if isinstance(np.birth_date, str):
+                            person_birth_date = np.birth_date
+                        elif isinstance(np.birth_date, datetime):
+                            person_birth_date = np.birth_date.strftime("%Y-%m-%d")
+                        else:
+                            person_birth_date = None
+                    except (TypeError, AttributeError):
+                        person_birth_date = None
+                else:
+                    person_name = the_person.legal_person.long_name1
+                    person_gender = None
+                    person_birth_date = None
+
+                try:
+                    person_email = the_person.first_email_communication.content or None
+                except AttributeError:
+                    person_email = None
+                try:
+                    person_phone = the_person.first_landline_phone_communication.content or None
+                except AttributeError:
+                    person_phone = None
+                try:
+                    person_mobile = the_person.first_mobile_phone_communication.content or None
+                except AttributeError:
+                    person_mobile = None
+                try:
+                    person_role = contractor_entry.contractor_type.name
+                except (ValueError, AttributeError):
+                    person_role = None
+
+                if person_email or person_phone or person_mobile:
+                    contact_entry = {
+                        "role": person_role,
+                        "name": person_name,
+                        "gender": person_gender,
+                        "email": person_email,
+                        "phone": person_phone,
+                        "mobile": person_mobile,
+                        "birth_date": person_birth_date
+                    }
+                    contact_items.append(contact_entry)
+            if not contact_items:
+                return abort(404)
+            else:
+                return {
+                    "contact_items": contact_items
+                }
+        oretval = with_wowi_retry(_do_app_uu_contact, uu_id=use_unit_id)
+        return oretval
+
+    @app.route("/app/use-unit/floor_plan/<int:use_unit_id>", methods=["GET"])
+    @jwt_required()
+    def app_uu_floor_plan(use_unit_id):
+        def _do_app_uu_floor_plan(wowi: WowiPy, uu_id: int):
+            uumedia = wowi.get_media(entity_name="UseUnit", entity_id=uu_id)
+            for entry in uumedia:
+                if entry.picture_type_name == "Grundriss":
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        file_path = os.path.join(tmpdir, entry.file_name)
+                        wowi.download_media("UseUnit", entry.file_guid, tmpdir, entry.file_name)
+                        return send_file(file_path, download_name=entry.file_name)
+            return abort(404)
+        oretval = with_wowi_retry(_do_app_uu_floor_plan, uu_id=use_unit_id)
+        return oretval
 
     @app.route("/app/use-unit/search", methods=["GET"])
     @jwt_required()
