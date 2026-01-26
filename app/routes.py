@@ -18,7 +18,7 @@ from sqlalchemy import or_, inspect, func
 from app.erp import with_wowi_retry
 from app.geo import get_buildings_in_radius_m, haversine_distance_m
 from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor, Person
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, timezone
 import logging
 import numbers
 
@@ -26,6 +26,9 @@ import numbers
 # ACHTUNG: BEI NEUER VERSION ANPASSEN
 APP_VERSION_MIN = 1
 APP_VERSION_MAX = 0
+
+LIMIT_MAX = 20
+LIMIT_DEFAULT = 20
 
 
 logger = logging.getLogger('root')
@@ -47,6 +50,10 @@ def check_version(version, pdata: dict) -> bool:
 
 def is_numeric(value):
     return isinstance(value, numbers.Number)
+
+
+def get_bool_arg(name: str):
+    return request.args.get(name, "").lower() in ("1", "true", "yes", "on")
 
 
 def has_table(table_name: str) -> bool:
@@ -71,7 +78,7 @@ def register_routes(app):
     @app.route("/")
     @admin_required
     def index():
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         year_start = now - timedelta(days=364)
         last_7 = now - timedelta(days=7)
         last_30 = now - timedelta(days=30)
@@ -775,6 +782,15 @@ def register_routes(app):
         param_radius = request.args.get("radius")  # meters
         param_lat = request.args.get("lat")
         param_lon = request.args.get("lon")
+        param_limit = request.args.get("limit")
+        only_terminated = get_bool_arg("only_terminated")
+        only_vacant = get_bool_arg("only_vacant")
+        try:
+            limit = int(param_limit)
+        except (ValueError, TypeError):
+            limit = LIMIT_DEFAULT
+        if limit > LIMIT_MAX:
+            limit = LIMIT_MAX
 
         current_user_id = int(get_jwt_identity())
         user: User
@@ -799,20 +815,29 @@ def register_routes(app):
                 return jsonify({"items": []}), 200
 
             q = q.filter(Building.internal_id.in_(building_ids))
-
-        buildings = q.order_by(Building.street_complete).all()
-
+        buildings = (
+            q.order_by(Building.street_complete)
+            .limit(limit)
+            .all()
+        )
         retval = []
         building: Building
         for building in buildings:
             uu_info = []
             uus = cache.session.query(UseUnit).filter(UseUnit.building_id == building.internal_id).all()
             uu: UseUnit
+            object_has_relevant_use_units = False
             for uu in uus:
                 contract_info = {}
                 contract: Contract
                 for contract in uu.contracts:
-                    if contract.status_name == "aktiv":
+                    if contract.status_name == "beendet":
+                        continue
+                    if only_vacant and not contract.is_vacancy:
+                        continue
+                    if only_terminated and contract.status_name != "gekündigt":
+                        continue
+                    if not contract.is_vacancy:
                         contractor: Contractor
                         contractor = contract.contractors[0]
                         person: Person
@@ -823,7 +848,17 @@ def register_routes(app):
                             "start": contract.contract_start,
                             "end": contract.contract_end
                         }
+                    else:
+                        contract_info = {
+                            "id_num": contract.id_num,
+                            "contractor_name": "Leerstand",
+                            "start": contract.contract_start,
+                            "end": contract.contract_end
+                        }
+                    object_has_relevant_use_units = True
                     break
+                if (only_vacant or only_terminated) and not contract_info:
+                    continue
                 uu_info.append({
                     "id_num": uu.id_num,
                     "id": uu.internal_id,
@@ -842,6 +877,8 @@ def register_routes(app):
                 distance = None
                 loc_lat = None
                 loc_lon = None
+            if not object_has_relevant_use_units:
+                continue
             retval.append({
                 "id": building.internal_id,
                 "id_num": building.id_num,
