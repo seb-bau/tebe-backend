@@ -811,9 +811,9 @@ def register_routes(app):
                 file_name=os.path.basename(media_path),
                 creation_date_str=datetime.now().strftime("%y-%m-%d"),
                 entity_type_name="UseUnit",
-                entity_id=uu_id,
-                picture_type_name="Sonstiges",
+                entity_id=uu_id
             )
+            wowi_file.picture_type_name = "Sonstiges"
             uplresult: Result
             uplresult = wowi.upload_media(wowi_file, media_path)
             if uplresult.status_code not in [200,201]:
