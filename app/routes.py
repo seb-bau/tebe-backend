@@ -6,6 +6,8 @@ from flask_jwt_extended import (
     get_jwt_identity,
     get_jwt
 )
+from wowipy.models import Result
+
 from app.erp import create_facility, create_component, edit_component
 from wowipy.wowipy import WowiPy, ComponentElement, MediaData, LicenseAgreement
 import wowipy.models
@@ -800,6 +802,7 @@ def register_routes(app):
         stored_path = os.path.join(temp_dir, stored_name)
 
         photo.save(stored_path)
+        logger.debug(f"Incoming picture saved to '{stored_path}'")
 
         def _do_app_uu_upload_photo(wowi: WowiPy, uu_id: int, media_path: str):
             wowi_file: MediaData
@@ -811,7 +814,9 @@ def register_routes(app):
                 entity_id=uu_id,
                 picture_type_name="Sonstiges",
             )
-            wowi.upload_media(wowi_file, media_path)
+            uplresult: Result
+            uplresult = wowi.upload_media(wowi_file, media_path)
+            logger.info(f"upload_media: Uploaded photo to use unit '{uu_id}. Result: {uplresult.message}'")
 
         with_wowi_retry(_do_app_uu_upload_photo, uu_id=use_unit_id, media_path=stored_path)
 
