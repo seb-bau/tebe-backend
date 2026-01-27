@@ -816,7 +816,10 @@ def register_routes(app):
             )
             uplresult: Result
             uplresult = wowi.upload_media(wowi_file, media_path)
-            logger.info(f"upload_media: Uploaded photo to use unit '{uu_id}. Result: {uplresult.message}'")
+            if uplresult.status_code not in [200,201]:
+                logger.error(f"upload_media: Upload failed for use unit id '{uu_id}'. Message: {uplresult.message}")
+            else:
+                logger.info(f"upload_media: Uploaded photo to use unit '{uu_id}. Result: {uplresult.message}'")
 
         with_wowi_retry(_do_app_uu_upload_photo, uu_id=use_unit_id, media_path=stored_path)
 
