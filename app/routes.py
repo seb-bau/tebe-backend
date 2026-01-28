@@ -627,6 +627,8 @@ def register_routes(app):
                 if comp_cat_item.under_components:
                     under_components = []
                     for uc in comp_cat_item.under_components:
+                        logger.debug(f"dbg0128: Component ID: {component.id_}")
+                        logger.debug(f"dbg0128: Component under_components: {component.under_components}")
                         under_components.append({
                             "id": uc.id,
                             "name": uc.name,
