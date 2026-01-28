@@ -660,6 +660,7 @@ def register_routes(app):
             comp_cat = db.session.query(ComponentCatalogItem).filter(ComponentCatalogItem.enabled.is_(True)).all()
             cat_item: ComponentCatalogItem
             for cat_item in comp_cat:
+                fac_cat = db.session.get(FacilityCatalogItem, cat_item.facility_catalog_item_id)
                 if cat_item.id not in found_types:
                     under_components = []
                     for uc in cat_item.under_components:
@@ -674,6 +675,7 @@ def register_routes(app):
                         "under_components": under_components,
                         "facility_cat_id": cat_item.facility_catalog_item_id,
                         "facility_cat_name": cat_item.facility.name,
+                        "facility_folded": fac_cat.view_folded,
                         "is_bool": cat_item.is_bool,
                         "single_under_component": cat_item.single_under_component,
                         "hide_quantity": cat_item.hide_quantity
