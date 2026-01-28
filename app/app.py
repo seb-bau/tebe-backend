@@ -33,6 +33,22 @@ def create_app():
         graylog_port=config.getint('Logging', 'graylog_port', fallback=0),
     )
 
+    if config.getboolean('Debug', 'demo_mode', fallback=False):
+        tapp.config['DEMO_MODE'] = True
+        tapp.config['DEMO_CUR_DATA'] = os.path.join(tapp.root_path, "demo_current_data.json")
+        tapp.config['DEMO_FLOOR_PLAN'] = os.path.join(tapp.root_path, "demo_floor_plan.png")
+        tapp.config['DEMO_SEARCH'] = os.path.join(tapp.root_path, "demo_search.json")
+        tapp.config['DEMO_CONTACTS'] = os.path.join(tapp.root_path, "demo_contacts.json")
+        if (os.path.exists(tapp.config['DEMO_CUR_DATA']) and
+                os.path.exists(tapp.config['DEMO_FLOOR_PLAN']) and
+                os.path.exists(tapp.config['DEMO_SEARCH']) and
+                os.path.exists(tapp.config['DEMO_CONTACTS'])):
+            _logger.info(f"STARTING IN DEMO MODE")
+        else:
+            _logger.critical(f"MISSING DEMO FILE!")
+    else:
+        tapp.config['DEMO_MODE'] = False
+
     db.init_app(tapp)
     migrate.init_app(tapp, db)
     bcrypt.init_app(tapp)

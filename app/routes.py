@@ -28,6 +28,7 @@ import os
 import tempfile
 import uuid
 from werkzeug.utils import secure_filename
+from app.helpers import _json_from_file
 
 
 # ACHTUNG: BEI NEUER VERSION ANPASSEN
@@ -609,6 +610,9 @@ def register_routes(app):
     @app.route("/app/use-unit/data/current/<int:use_unit_id>", methods=["GET"])
     @jwt_required()
     def app_uu_current_data(use_unit_id):
+        if current_app.config['DEMO_MODE']:
+            return _json_from_file(current_app.config['DEMO_CUR_DATA'])
+
         def _do_app_uu_current_data(wowi: WowiPy, uu_id: int):
             components = wowi.get_components(use_unit_id=uu_id)
             retval_existing = []
@@ -690,6 +694,9 @@ def register_routes(app):
     @app.route("/app/use-unit/data/write/<int:use_unit_id>", methods=["POST"])
     @jwt_required()
     def app_uu_write_data(use_unit_id):
+        if current_app.config['DEMO_MODE']:
+            return jsonify({"msg": "ok"}), 200
+
         def _do_app_uu_write_data(wowi: WowiPy, uu_id: int):
             data = request.get_json()
             print(data)
@@ -790,6 +797,9 @@ def register_routes(app):
     @app.route("/app/use-unit/photos", methods=["POST"])
     @jwt_required()
     def route_use_unit_photos():
+        if current_app.config['DEMO_MODE']:
+            return jsonify({"msg": "ok"}), 201
+
         photo = request.files.get("photo")
         use_unit_id_raw = request.form.get("use_unit_id")
 
@@ -823,7 +833,7 @@ def register_routes(app):
             wowi_file.picture_type_name = "Sonstiges"
             uplresult: Result
             uplresult = wowi.upload_media(wowi_file, media_path)
-            if uplresult.status_code not in [200,201]:
+            if uplresult.status_code not in [200, 201]:
                 logger.error(f"upload_media: Upload failed for use unit id '{uu_id}'. Message: {uplresult.message}")
             else:
                 logger.info(f"upload_media: Uploaded photo to use unit '{uu_id}. Result: {uplresult.message}'")
@@ -835,6 +845,9 @@ def register_routes(app):
     @app.route("/app/use-unit/contacts/<int:use_unit_id>", methods=["GET"])
     @jwt_required()
     def app_uu_contact(use_unit_id):
+        if current_app.config['DEMO_MODE']:
+            return _json_from_file(current_app.config['DEMO_CONTACTS'])
+
         def _do_app_uu_contact(wowi: WowiPy, uu_id: int):
             contracts = wowi.get_license_agreements(license_agreement_active_on=datetime.now(),
                                                     add_args={"useUnitId": uu_id},
@@ -912,6 +925,9 @@ def register_routes(app):
     @app.route("/app/use-unit/floor_plan/<int:use_unit_id>", methods=["GET"])
     @jwt_required()
     def app_uu_floor_plan(use_unit_id):
+        if current_app.config['DEMO_MODE']:
+            return send_file(current_app.config['DEMO_FLOOR_PLAN'], download_name="demo_plan.png")
+
         def _do_app_uu_floor_plan(wowi: WowiPy, uu_id: int):
             uumedia = wowi.get_media(entity_name="UseUnit", entity_id=uu_id)
             for entry in uumedia:
@@ -927,6 +943,9 @@ def register_routes(app):
     @app.route("/app/use-unit/search", methods=["GET"])
     @jwt_required()
     def route_search():
+        if current_app.config['DEMO_MODE']:
+            return _json_from_file(current_app.config['DEMO_SEARCH'])
+
         cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
 
         param_fulltext = request.args.get("fulltext")
