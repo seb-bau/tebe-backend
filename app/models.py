@@ -76,8 +76,8 @@ class FacilityCatalogItem(db.Model):
     repair_relevance = db.Column(db.Boolean, default=False)
 
     # custom data
-    enabled = db.Column(db.Boolean, default=False)
     custom_name = db.Column(db.String(200), nullable=True)
+    view_folded = db.Column(db.Boolean, default=False)
 
     # connections
     components = db.relationship(

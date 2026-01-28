@@ -460,11 +460,11 @@ def register_routes(app):
         facility = FacilityCatalogItem.query.get_or_404(facility_id)
 
         if request.method == "POST":
-            enabled = bool(request.form.get("enabled"))
+            view_folded = bool(request.form.get("view_folded"))
             custom_name = request.form.get("custom_name") or None
 
-            facility.enabled = enabled
             facility.custom_name = custom_name
+            facility.view_folded = view_folded
 
             db.session.commit()
             flash("Ausstattungsgruppe wurde aktualisiert.", "success")
@@ -639,6 +639,7 @@ def register_routes(app):
                     under_components = None
 
                 fac_item = db.session.get(FacilityItem, component.facility_id)
+                fac_cat = db.session.get(FacilityCatalogItem, fac_item.facility_catalog_item_id)
                 retval_existing.append({
                     "id": component.id_,
                     "name": component.name,
@@ -648,6 +649,7 @@ def register_routes(app):
                     "under_components": under_components,
                     "facility_cat_id": component.facility_id,
                     "facility_cat_name": fac_item.name,
+                    "facility_folded": fac_cat.view_folded,
                     "is_bool": comp_cat_item.is_bool,
                     "single_under_component": comp_cat_item.single_under_component,
                     "hide_quantity": comp_cat_item.hide_quantity,
