@@ -50,7 +50,7 @@
                     <th>Verfügbar (Gebäude)</th>
                     <th>Verfügbar (Nutzungseinheit)</th>
                     <th>Relevanz (Instandsetzung)</th>
-                    <th>Aktiv</th>
+                    <th>Eingeklappt</th>
                     <th></th>
                 </tr>
                 </thead>
@@ -67,7 +67,7 @@
                         <td>{{ "Ja" if facility.available_use_unit else "Nein" }}</td>
                         <td>{{ "Ja" if facility.repair_relevance else "Nein" }}</td>
                         <td>
-                            {% if facility.enabled %}
+                            {% if facility.view_folded %}
                                 <span class="badge bg-success">Aktiv</span>
                             {% else %}
                                 <span class="badge bg-secondary">Inaktiv</span>
