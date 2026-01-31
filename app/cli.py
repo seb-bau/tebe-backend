@@ -11,7 +11,8 @@ def register_cli_commands(app):
     @click.option("--email", prompt=True, help="Email address of the new user")
     @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True,
                   help="Password of the new user")
-    def create_user(email, password):
+    @click.option("--admin", prompt=True, help="Is this an administrator?", default=False)
+    def create_user(email, password, admin):
         existing = User.query.filter_by(email=email).first()
         if existing:
             click.echo(f"User '{email}' already exists.")
@@ -19,6 +20,7 @@ def register_cli_commands(app):
 
         user = User(email=email)
         user.set_password(password)
+        user.is_admin = bool(admin)
         db.session.add(user)
         db.session.commit()
 

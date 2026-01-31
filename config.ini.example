@@ -1,0 +1,28 @@
+[General]
+jwt_secret = "changeme"
+app_secret = "changemetoo"
+
+[Database]
+# SqlAlchemy URI zur internen Datenbank
+connection_uri = sqlite:///db.sqlite3
+
+[Wowicache]
+# SqlAlchemy URI zur Wowicache-Datenbank mit Wohnungsinformationen
+connection_uri = sqlite:///wowi_cache.db
+
+[Geolocation]
+# Geolocation-API für die bestimmung der Koordinationen der Immobilien
+api_key = xxx
+
+[OpenWowi]
+host =
+user =
+pass =
+key =
+
+[Handling]
+# yes/no Handling: Write 1 or 2 in count-Field (quantity) or use sub components "yes" and "no" (sub_components)
+bool_handling=sub_components
+bool_sub_component_yes_id=
+bool_sub_component_no_id=
+component_status=2

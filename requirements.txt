@@ -11,3 +11,5 @@ click
 wowicache
 requests
 wowipy
+uwsgi
+pymysql

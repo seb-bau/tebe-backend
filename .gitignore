@@ -4,5 +4,4 @@ venv
 .env
 config.ini
 db
-logs
 notes.md
