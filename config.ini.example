@@ -26,3 +26,7 @@ bool_handling=sub_components
 bool_sub_component_yes_id=
 bool_sub_component_no_id=
 component_status=2
+
+[MicrosoftAuth]
+tenant_id =
+client_id =

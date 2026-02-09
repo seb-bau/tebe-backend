@@ -36,6 +36,8 @@ class User(db.Model, UserMixin):
     last_version = db.Column(db.String(100), nullable=True)
     last_ip = db.Column(db.String(50), nullable=True)
     enable_score = db.Column(db.Boolean, nullable=True, default=True)
+    microsoft_tid = db.Column(db.String(36), nullable=True, index=True)
+    microsoft_oid = db.Column(db.String(36), nullable=True, index=True)
 
     def set_password(self, password: str):
         self.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")

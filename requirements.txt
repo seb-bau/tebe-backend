@@ -13,3 +13,4 @@ requests
 wowipy
 uwsgi
 pymysql
+PyJWT[crypto]

@@ -29,7 +29,7 @@ import tempfile
 import uuid
 from werkzeug.utils import secure_filename
 from app.helpers import _json_from_file
-
+from app.microsoft_auth import get_ms_config, validate_id_token
 
 # ACHTUNG: BEI NEUER VERSION ANPASSEN
 APP_VERSION_MIN = 1
@@ -236,6 +236,90 @@ def register_routes(app):
             "refresh_expires_in": refresh_expires
         }), 200
 
+    @app.route("/.well-known/app-auth-config", methods=["GET"])
+    def app_auth_config():
+        cfg = get_ms_config(current_app)
+        if cfg is None:
+            return jsonify({"msg": "microsoft auth not configured"}), 404
+        return jsonify({
+            "tenant_id": cfg["tenant_id"],
+            "client_id": cfg["client_id"]
+        }), 200
+
+    @app.route("/auth/microsoft", methods=["POST"])
+    def login_microsoft():
+        cfg = get_ms_config(current_app)
+        if cfg is None:
+            return jsonify({"msg": "microsoft auth not configured"}), 404
+
+        data = request.get_json() or {}
+        id_token = data.get("id_token")
+        app_version = request.args.get("app_version")
+
+        if not id_token:
+            return jsonify({"msg": "id_token required"}), 400
+
+        if not check_version(app_version, {"email": ""}):
+            logger.error(f"login_microsoft: App version mismatch")
+            return jsonify({"msg": "app version mismatch"}), 403
+
+        try:
+            claims = validate_id_token(
+                id_token=id_token,
+                tenant_id=cfg["tenant_id"],
+                client_id=cfg["client_id"]
+            )
+        except Exception as e:
+            logger.error(f"login_microsoft: invalid id token: {str(e)}")
+            return jsonify({"msg": "invalid id token"}), 401
+
+        oid = claims.get("oid")
+        email = (claims.get("email") or claims.get("preferred_username") or claims.get("upn") or "").strip().lower()
+
+        print(f"Preferred username '{claims.get('preferred_username')}'")
+        print(f"upn '{claims.get('upn')}'")
+        print(f"email '{claims.get('email')}'")
+
+        user = db.session.query(User).filter_by(microsoft_tid=cfg["tenant_id"], microsoft_oid=oid).first()
+
+        if user is None and email:
+            user = (
+                db.session.query(User)
+                .filter(func.lower(User.email) == email)
+                .first()
+            )
+            if user and (not user.microsoft_oid and not user.microsoft_tid):
+                user.microsoft_tid = cfg["tenant_id"]
+                user.microsoft_oid = oid
+                db.session.commit()
+
+        if not user:
+            logger.error(f"login_microsoft: User '{claims.get('email')}' not found in database")
+            return jsonify({"msg": "user not found"}), 401
+
+        if not user.is_active:
+            return jsonify({"msg": "user is disabled"}), 403
+
+        access_token = create_access_token(identity=str(user.id))
+        refresh_token = create_refresh_token(identity=str(user.id))
+
+        access_expires = int(current_app.config["JWT_ACCESS_TOKEN_EXPIRES"].total_seconds())
+        refresh_expires = int(current_app.config["JWT_REFRESH_TOKEN_EXPIRES"].total_seconds())
+
+        user.last_ip = request.environ['REMOTE_ADDR']
+        user.last_action = datetime.now()
+        user.last_version = app_version
+        db.session.commit()
+
+        logger.info(f"login_microsoft: User '{user.email}' logged in with IP {user.last_ip}")
+
+        return jsonify({
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "access_expires_in": access_expires,
+            "refresh_expires_in": refresh_expires
+        }), 200
+
     @app.route("/auth/refresh", methods=["POST"])
     @jwt_required(refresh=True)
     def refresh():
@@ -339,6 +423,8 @@ def register_routes(app):
                 flash("E-Mail und Passwort sind Pflichtfelder.", "danger")
                 return redirect(url_for("admin_users_create"))
 
+            email = email.strip().lower()
+
             if User.query.filter_by(email=email).first():
                 flash("Es existiert bereits ein Benutzer mit dieser E-Mail.", "danger")
                 return redirect(url_for("admin_users_create"))
@@ -374,6 +460,8 @@ def register_routes(app):
             if not email:
                 flash("E-Mail darf nicht leer sein.", "danger")
                 return redirect(url_for("admin_users_edit", user_id=user.id))
+
+            email = email.strip().lower()
 
             if User.query.filter(User.email == email, User.id != user.id).first():
                 flash("Es existiert bereits ein anderer Benutzer mit dieser E-Mail.", "danger")

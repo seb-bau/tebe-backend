@@ -44,8 +44,7 @@ def with_wowi_retry(fn, *args, **kwargs):
         return fn(client, *args, **kwargs)
 
     except Exception as exc:
-        logger.error(traceback.format_exc())
-        logger.warning("WowiPy call failed, attempting retry: %s", exc)
+        logger.info("WowiPy call failed, attempting retry: %s", exc)
 
         # Reset client
         global _wowi_client
