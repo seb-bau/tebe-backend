@@ -1,9 +1,12 @@
-import time
-import requests
 import jwt
 from jwt import PyJWKClient
+import secrets
+import requests
+from urllib.parse import urlencode
+import logging
 
 _jwk_clients = {}
+logger = logging.getLogger('root')
 
 
 def _strip_quotes(value: str) -> str:
@@ -57,3 +60,48 @@ def validate_id_token(id_token: str, tenant_id: str, client_id: str):
         raise ValueError("missing_oid")
 
     return claims
+
+
+def build_authorize_url(tenant_id: str, client_id: str, redirect_uri: str, state: str, nonce: str) -> str:
+    authorize_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
+    params = {
+        "client_id": client_id,
+        "response_type": "code",
+        "redirect_uri": redirect_uri,
+        "response_mode": "query",
+        "scope": "openid profile email",
+        "state": state,
+        "nonce": nonce,
+    }
+    return authorize_url + "?" + urlencode(params)
+
+
+def exchange_code_for_tokens(tenant_id: str, client_id: str, client_secret: str, code: str, redirect_uri: str) -> dict:
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "scope": "openid profile email",
+    }
+    r = requests.post(token_url, data=data, timeout=10)
+    if r.status_code != 200:
+        logger.error("MS /token failed: %s %s", r.status_code, r.text)
+    r.raise_for_status()
+    return r.json()
+
+
+def generate_state_nonce() -> tuple[str, str]:
+    return secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+
+
+def normalize_email_from_claims(claims: dict) -> str:
+    v = (
+        claims.get("email")
+        or claims.get("preferred_username")
+        or claims.get("upn")
+        or ""
+    )
+    return str(v).strip().lower()

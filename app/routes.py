@@ -17,7 +17,7 @@ from app.extensions import db
 from flask import current_app, send_file
 from flask_login import login_user, logout_user, login_required, current_user
 from functools import wraps
-from sqlalchemy import or_, inspect, func
+from sqlalchemy import or_, inspect
 from app.erp import with_wowi_retry
 from app.geo import get_buildings_in_radius_m, haversine_distance_m
 from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor, Person
@@ -29,7 +29,17 @@ import tempfile
 import uuid
 from werkzeug.utils import secure_filename
 from app.helpers import _json_from_file
-from app.microsoft_auth import get_ms_config, validate_id_token
+from flask import session
+from sqlalchemy import func
+
+from app.microsoft_auth import (
+    validate_id_token,
+    build_authorize_url,
+    exchange_code_for_tokens,
+    generate_state_nonce,
+    normalize_email_from_claims,
+    get_ms_config
+)
 
 # ACHTUNG: BEI NEUER VERSION ANPASSEN
 APP_VERSION_MIN = 1
@@ -1323,3 +1333,122 @@ def register_routes(app):
             date_from=date_from,
             date_to=date_to,
         )
+
+    @app.route("/admin/login/microsoft", methods=["GET"])
+    def admin_login_microsoft():
+        cfg = get_ms_config(current_app)
+        client_secret = current_app.config["INI_CONFIG"].get("MicrosoftAuth", "client_secret", fallback=None)
+        if cfg is None or not client_secret:
+            flash("Microsoft-Login ist nicht konfiguriert.", "danger")
+            return redirect(url_for("admin_login"))
+
+        state, nonce = generate_state_nonce()
+        session["ms_state"] = state
+        session["ms_nonce"] = nonce
+
+        redirect_uri = url_for("admin_auth_microsoft_callback", _external=True)
+        url = build_authorize_url(
+            tenant_id=cfg["tenant_id"],
+            client_id=cfg["client_id"],
+            redirect_uri=redirect_uri,
+            state=state,
+            nonce=nonce,
+        )
+        return redirect(url)
+
+    @app.route("/admin/auth/microsoft/callback", methods=["GET"])
+    def admin_auth_microsoft_callback():
+        cfg = get_ms_config(current_app)
+        if cfg is None:
+            flash("Microsoft-Login ist nicht konfiguriert.", "danger")
+            return redirect(url_for("admin_login"))
+
+        if request.args.get("error"):
+            flash("Microsoft-Login abgebrochen oder fehlgeschlagen.", "danger")
+            return redirect(url_for("admin_login"))
+
+        state = request.args.get("state", "")
+        if not state or state != session.get("ms_state"):
+            flash("Ungültiger Login-Status (state).", "danger")
+            return redirect(url_for("admin_login"))
+
+        code = request.args.get("code", "")
+        if not code:
+            flash("Kein Authorization Code erhalten.", "danger")
+            return redirect(url_for("admin_login"))
+
+        client_secret = current_app.config.get("INI_CONFIG").get("MicrosoftAuth", "client_secret", fallback=None)
+        if not client_secret:
+            flash("Dieser Server erlaubt keine Anmeldung über Microsoft.", "danger")
+            return redirect(url_for("admin_login"))
+
+        redirect_uri = url_for("admin_auth_microsoft_callback", _external=True)
+
+        try:
+            tokens = exchange_code_for_tokens(
+                tenant_id=cfg["tenant_id"],
+                client_id=cfg["client_id"],
+                client_secret=client_secret,
+                code=code,
+                redirect_uri=redirect_uri,
+            )
+        except Exception as e:
+            flash("Microsoft Token-Austausch fehlgeschlagen.", "danger")
+            logger.error(f"admin_auth_microsoft_callback: Token exchange failed: {str(e)}")
+            return redirect(url_for("admin_login"))
+
+        id_token = tokens.get("id_token")
+        if not id_token:
+            flash("Kein ID Token von Microsoft erhalten.", "danger")
+            return redirect(url_for("admin_login"))
+
+        try:
+            claims = validate_id_token(
+                id_token=id_token,
+                tenant_id=cfg["tenant_id"],
+                client_id=cfg["client_id"],
+            )
+        except Exception as e:
+            logger.error(f"admin_auth_microsoft_callback: token error: {str(e)}")
+            flash("Ungültiges Microsoft Token.", "danger")
+            return redirect(url_for("admin_login"))
+
+        expected_nonce = session.get("ms_nonce")
+        if expected_nonce and claims.get("nonce") != expected_nonce:
+            flash("Ungültiger Login-Status (nonce).", "danger")
+            return redirect(url_for("admin_login"))
+
+        oid = claims.get("oid")
+        email = normalize_email_from_claims(claims)
+
+        user = db.session.query(User).filter_by(
+            microsoft_tid=cfg["tenant_id"],
+            microsoft_oid=oid
+        ).first()
+
+        if user is None and email:
+            user = db.session.query(User).filter(func.lower(User.email) == email).first()
+            if user and (not user.microsoft_oid and not user.microsoft_tid):
+                user.microsoft_tid = cfg["tenant_id"]
+                user.microsoft_oid = oid
+                db.session.commit()
+
+        if not user:
+            flash("Benutzer nicht gefunden.", "danger")
+            return redirect(url_for("admin_login"))
+
+        if not user.is_active:
+            flash("Benutzer ist deaktiviert.", "danger")
+            return redirect(url_for("admin_login"))
+
+        if not user.is_admin:
+            flash("Kein Zugriff auf den Admin-Bereich.", "danger")
+            return redirect(url_for("admin_login"))
+
+        login_user(user)
+
+        session.pop("ms_state", None)
+        session.pop("ms_nonce", None)
+
+        flash("Erfolgreich mit Microsoft eingeloggt.", "success")
+        return redirect(url_for("index"))
