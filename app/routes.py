@@ -28,7 +28,7 @@ import os
 import tempfile
 import uuid
 from werkzeug.utils import secure_filename
-from app.helpers import _json_from_file
+from app.helpers import _json_from_file, normalize_exif_orientation
 from flask import session
 from sqlalchemy import func
 
@@ -917,6 +917,10 @@ def register_routes(app):
         stored_path = os.path.join(temp_dir, stored_name)
 
         photo.save(stored_path)
+        try:
+            normalize_exif_orientation(stored_path)
+        except Exception as e:
+            logger.warning(f"Could not normalize EXIF orientation for '{stored_path}': {e}")
         logger.debug(f"Incoming picture saved to '{stored_path}'")
 
         def _do_app_uu_upload_photo(wowi: WowiPy, uu_id: int, media_path: str):

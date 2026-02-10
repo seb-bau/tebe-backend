@@ -14,3 +14,4 @@ wowipy
 uwsgi
 pymysql
 PyJWT[crypto]
+Pillow
