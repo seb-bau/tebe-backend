@@ -117,7 +117,6 @@ def update_geolocation(force_update: bool = False):
                 continue
             if not force_update:
                 existing = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
-                print(f"existing: {existing}")
                 if existing:
                     continue
 
