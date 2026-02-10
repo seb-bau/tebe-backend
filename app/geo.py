@@ -105,16 +105,19 @@ def update_geolocation(force_update: bool = False):
         buildings_total = len(buildings)
         building_counter = 0
         update_counter = 0
+        last_reported = 0
         for building in buildings:
             building_counter += 1
             progress = building_counter // buildings_total
-            if progress % 10 == 0:
+            if progress % 10 == 0 and progress != last_reported:
+                last_reported = progress
                 print(f"update_geolocation progress: {progress} %")
                 logger.debug(f"update_geolocation progress: {progress} %")
             if building.building_type_name != "Mehrfamilienhaus":
                 continue
             if not force_update:
                 existing = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
+                print(f"existing: {existing}")
                 if existing:
                     continue
 
