@@ -1,5 +1,5 @@
 # TEBE-Server
-### Struktierte Erfassung des technischen Bestands per App
+### Strukturierte Erfassung des technischen Bestands per App
 
 | ![](docs/images/screenshot1.png) | ![](docs/images/screenshot2.png) |
 |----------------------------------|----------------------------------|

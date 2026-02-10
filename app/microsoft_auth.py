@@ -5,6 +5,7 @@ from jwt import PyJWKClient
 
 _jwk_clients = {}
 
+
 def _strip_quotes(value: str) -> str:
     if value is None:
         return ""
@@ -12,6 +13,7 @@ def _strip_quotes(value: str) -> str:
     if len(v) >= 2 and ((v[0] == '"' and v[-1] == '"') or (v[0] == "'" and v[-1] == "'")):
         return v[1:-1].strip()
     return v
+
 
 def get_ms_config(app):
     cfg = app.config.get("INI_CONFIG")
@@ -22,6 +24,7 @@ def get_ms_config(app):
     if not tenant_id or not client_id:
         return None
     return {"tenant_id": tenant_id, "client_id": client_id}
+
 
 def validate_id_token(id_token: str, tenant_id: str, client_id: str):
     jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
