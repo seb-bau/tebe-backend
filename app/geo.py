@@ -93,13 +93,24 @@ def geocode_address(address: str, api_key: str) -> tuple[str, str] | tuple[None,
 
 
 def update_geolocation(force_update: bool = False):
+    logger.debug("update_geolocation start")
     with current_app.app_context():
         cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
         geo_api_key = current_app.config['INI_CONFIG'].get("Geolocation", "api_key")
         building: Building
         buildings = cache.session.query(Building).all()
-        print(len(buildings))
+        if not buildings:
+            logger.error(f"update_geolocation: No buildings in cache. Aborting.")
+            return False
+        buildings_total = len(buildings)
+        building_counter = 0
+        update_counter = 0
         for building in buildings:
+            building_counter += 1
+            progress = building_counter // buildings_total
+            if progress % 10 == 0:
+                print(f"update_geolocation progress: {progress} %")
+                logger.debug(f"update_geolocation progress: {progress} %")
             if building.building_type_name != "Mehrfamilienhaus":
                 continue
             if not force_update:
@@ -120,6 +131,10 @@ def update_geolocation(force_update: bool = False):
                 lat=lat,
                 lon=lon
             )
-
+            update_counter += 1
             db.session.add(new_geo)
             db.session.commit()
+        success_message = f"update_geolocation finished. Total buildings: {buildings_total}. Updated: {update_counter}"
+        logger.info(success_message)
+        print(success_message)
+    return True
