@@ -7,7 +7,6 @@ from app.models import FacilityCatalogItem, ComponentCatalogItem, UnderComponent
 from threading import Lock
 from datetime import datetime
 from flask_jwt_extended import get_jwt_identity
-import traceback
 
 logger = logging.getLogger('root')
 
@@ -64,29 +63,6 @@ def sync_facility_and_component_catalog():
     all_components = wowi.get_components(fetch_all=True)
     all_under_components = wowi.extract_under_components(all_components)
 
-    fac_ids = []
-    entry_fac: FacilityElement
-    for entry_fac in all_facilities:
-        fac_ids.append(entry_fac.id_)
-        find_fac = db.session.get(FacilityItem, entry_fac.id_)
-        if find_fac:
-            find_fac.name = entry_fac.name
-            find_fac.facility_catalog_item_id = entry_fac.facility_catalog_id
-        else:
-            find_fac = FacilityItem(
-                id=entry_fac.id_,
-                name=entry_fac.name,
-                facility_catalog_item_id=entry_fac.facility_catalog_id
-            )
-            db.session.add(find_fac)
-        db.session.commit()
-
-    all_facs = db.session.query(FacilityItem).all()
-    for fac_check in all_facs:
-        if fac_check.id not in fac_ids:
-            db.session.delete(fac_check)
-    db.session.commit()
-
     fac_cat_ids = []
     entry: FacilityCatalogElement
     for entry in facility_catalog_items:
@@ -113,6 +89,29 @@ def sync_facility_and_component_catalog():
             )
             db.session.add(find_facility)
         db.session.commit()
+
+    fac_ids = []
+    entry_fac: FacilityElement
+    for entry_fac in all_facilities:
+        fac_ids.append(entry_fac.id_)
+        find_fac = db.session.get(FacilityItem, entry_fac.id_)
+        if find_fac:
+            find_fac.name = entry_fac.name
+            find_fac.facility_catalog_item_id = entry_fac.facility_catalog_id
+        else:
+            find_fac = FacilityItem(
+                id=entry_fac.id_,
+                name=entry_fac.name,
+                facility_catalog_item_id=entry_fac.facility_catalog_id
+            )
+            db.session.add(find_fac)
+        db.session.commit()
+
+    all_facs = db.session.query(FacilityItem).all()
+    for fac_check in all_facs:
+        if fac_check.id not in fac_ids:
+            db.session.delete(fac_check)
+    db.session.commit()
 
     all_fac_cats = db.session.query(FacilityCatalogItem).all()
     for fac_cat_check in all_fac_cats:
