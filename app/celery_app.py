@@ -3,7 +3,7 @@ import configparser
 from celery import Celery
 from app import log
 from app.extensions import db
-from celery.signals import after_setup_logger, after_setup_task_logger
+from celery.signals import after_setup_logger, worker_process_init
 import logging
 
 
@@ -24,10 +24,6 @@ def _ensure_worker_logging_configured():
         return
 
     try:
-        root = logging.getLogger()
-        for h in list(root.handlers):
-            root.removeHandler(h)
-
         with _flask_app.app_context():
             cfg = configparser.ConfigParser(delimiters=("=",), interpolation=None)
             configpath = os.path.join(os.path.dirname(__file__), "config.ini")
@@ -52,6 +48,13 @@ def _ensure_worker_logging_configured():
 
 @after_setup_logger.connect
 def _setup_celery_root_logger(logger=None, *args, **kwargs):
+    _ensure_worker_logging_configured()
+
+
+@worker_process_init.connect
+def _on_worker_process_init(**kwargs):
+    global _worker_logging_configured
+    _worker_logging_configured = False
     _ensure_worker_logging_configured()
 
 
