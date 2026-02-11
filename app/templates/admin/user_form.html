@@ -34,6 +34,18 @@
             value="{{ user.name if user else '' }}"
         >
     </div>
+    <div class="mb-3">
+    <label for="role_id" class="form-label">Rolle</label>
+    <select class="form-select" id="role_id" name="role_id" required>
+        <option value="">Bitte auswählen...</option>
+        {% for r in roles %}
+            <option value="{{ r.id }}" {% if user and user.role_id == r.id %}selected{% endif %}>
+                {{ r.name }}
+            </option>
+        {% endfor %}
+    </select>
+</div>
+
 
     <div class="mb-3">
         <label for="password" class="form-label">

@@ -47,12 +47,7 @@
                     <th>Benutzerdefinierter Name</th>
                     <th>Anzeigename</th>
                     <th>Kommentar</th>
-                    <th>Wartung</th>
-                    <th>Instandsetzung</th>
-                    <th>Vermietung</th>
-                    <th>Garantie</th>
-                    <th>Mengentyp</th>
-                    <th>Zählgerät</th>
+                    <th>Rollen</th>
                     <th>Ausstattungsgruppe</th>
                     <th>Aktiv</th>
                     <th>Boolscher Wert</th>
@@ -68,12 +63,16 @@
                         <td>{{ component.custom_name or "–" }}</td>
                         <td>{{ component.display_name }}</td>
                         <td>{{ component.comment or "–" }}</td>
-                        <td>{{ "Ja" if component.is_maintenance_relevant else "Nein" }}</td>
-                        <td>{{ "Ja" if component.is_repair_relevant else "Nein" }}</td>
-                        <td>{{ "Ja" if component.is_lease_relevant else "Nein" }}</td>
-                        <td>{{ "Ja" if component.is_warranty_relevant else "Nein" }}</td>
-                        <td>{{ component.quantity_type_name or component.quantity_type_code or "–" }}</td>
-                        <td>{{ "Ja" if component.is_metering_device else "Nein" }}</td>
+                        <td>
+                            {% if component.roles and component.roles|length > 0 %}
+                                {% for r in component.roles %}
+                                    <span class="badge bg-info text-dark me-1">{{ r.name }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">–</span>
+                            {% endif %}
+                        </td>
+
                         <td>{{ component.facility.display_name if component.facility else "–" }}</td>
                         <td>
                             {% if component.enabled %}
@@ -105,7 +104,7 @@
                     </tr>
                 {% else %}
                     <tr>
-                        <td colspan="14" class="text-center text-muted">
+                        <td colspan="17" class="text-center text-muted">
                             Keine Merkmale gefunden.
                         </td>
                     </tr>

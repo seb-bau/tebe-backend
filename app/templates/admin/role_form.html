@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% if role %}
+    {% set page_title = "Rolle bearbeiten" %}
+{% else %}
+    {% set page_title = "Rolle anlegen" %}
+{% endif %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-4">{{ page_title }}</h1>
+
+<form method="post">
+    <div class="mb-3">
+        <label for="name" class="form-label">Name</label>
+        <input
+            type="text"
+            class="form-control"
+            id="name"
+            name="name"
+            required
+            value="{{ role.name if role else '' }}"
+        >
+    </div>
+
+    <div class="mb-4">
+        <label for="component_ids" class="form-label">Komponenten</label>
+        <select class="form-select" id="component_ids" name="component_ids" multiple size="12">
+            {% for c in components %}
+                <option value="{{ c.id }}" {% if role and c in role.components %}selected{% endif %}>
+                    {{ c.display_name }} ({{ c.id }})
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">
+        Speichern
+    </button>
+    <a href="{{ url_for('admin_roles_list') }}" class="btn btn-secondary ms-2">
+        Abbrechen
+    </a>
+</form>
+{% endblock %}

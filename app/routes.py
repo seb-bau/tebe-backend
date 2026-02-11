@@ -8,7 +8,8 @@ from flask_jwt_extended import (
 )
 from wowipy.wowipy import WowiPy, ComponentElement, LicenseAgreement
 import wowipy.models
-from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, Geolocation
+from app.models import (User, Role, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem,
+                        Geolocation)
 from app.models import EventItem, FacilityItem
 from app.extensions import db
 from flask import current_app, send_file
@@ -421,6 +422,7 @@ def register_routes(app):
             password = request.form.get("password")
             is_active = bool(request.form.get("is_active"))
             is_admin = bool(request.form.get("is_admin"))
+            role_id = request.form.get("role_id", type=int)
 
             if not email or not password:
                 flash("E-Mail und Passwort sind Pflichtfelder.", "danger")
@@ -432,20 +434,30 @@ def register_routes(app):
                 flash("Es existiert bereits ein Benutzer mit dieser E-Mail.", "danger")
                 return redirect(url_for("admin_users_create"))
 
+            if not role_id:
+                flash("Rolle ist ein Pflichtfeld.", "danger")
+                return redirect(url_for("admin_users_create"))
+
+            role = Role.query.get(role_id)
+            if not role:
+                flash("Ungültige Rolle.", "danger")
+                return redirect(url_for("admin_users_create"))
+
             # noinspection PyArgumentList
             user = User(
                 email=email,
                 is_active=is_active,
                 is_admin=is_admin,
-                name=name
+                name=name,
+                role_id=role.id
             )
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
             flash("Benutzer wurde erstellt.", "success")
             return redirect(url_for("admin_users_list"))
-
-        return render_template("admin/user_form.html", user=None)
+        roles = Role.query.order_by(Role.name.asc()).all()
+        return render_template("admin/user_form.html", user=None, roles=roles)
 
     # Benutzer bearbeiten
     @app.route("/admin/users/<int:user_id>/edit", methods=["GET", "POST"])
@@ -459,6 +471,7 @@ def register_routes(app):
             password = request.form.get("password")  # optional
             is_active = bool(request.form.get("is_active"))
             is_admin = bool(request.form.get("is_admin"))
+            role_id = request.form.get("role_id", type=int)
 
             if not email:
                 flash("E-Mail darf nicht leer sein.", "danger")
@@ -470,10 +483,20 @@ def register_routes(app):
                 flash("Es existiert bereits ein anderer Benutzer mit dieser E-Mail.", "danger")
                 return redirect(url_for("admin_users_edit", user_id=user.id))
 
+            if not role_id:
+                flash("Rolle ist ein Pflichtfeld.", "danger")
+                return redirect(url_for("admin_users_edit", user_id=user.id))
+
+            role = Role.query.get(role_id)
+            if not role:
+                flash("Ungültige Rolle.", "danger")
+                return redirect(url_for("admin_users_edit", user_id=user.id))
+
             user.email = email
             user.name = name
             user.is_active = is_active
             user.is_admin = is_admin
+            user.role_id = role.id
 
             if password:
                 user.set_password(password)
@@ -482,7 +505,8 @@ def register_routes(app):
             flash("Benutzer wurde aktualisiert.", "success")
             return redirect(url_for("admin_users_list"))
 
-        return render_template("admin/user_form.html", user=user)
+        roles = Role.query.order_by(Role.name.asc()).all()
+        return render_template("admin/user_form.html", user=user, roles=roles)
 
     # Benutzer löschen
     @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
@@ -498,6 +522,85 @@ def register_routes(app):
         db.session.commit()
         flash("Benutzer wurde gelöscht.", "info")
         return redirect(url_for("admin_users_list"))
+
+    @app.route("/admin/roles")
+    @admin_required
+    def admin_roles_list():
+        roles = Role.query.order_by(Role.name.asc()).all()
+        return render_template("admin/roles_list.html", roles=roles)
+
+    @app.route("/admin/roles/create", methods=["GET", "POST"])
+    @admin_required
+    def admin_roles_create():
+        components = ComponentCatalogItem.query.order_by(ComponentCatalogItem.name.asc()).all()
+
+        if request.method == "POST":
+            name = (request.form.get("name") or "").strip()
+            component_ids = request.form.getlist("component_ids")
+
+            if not name:
+                flash("Name ist ein Pflichtfeld.", "danger")
+                return redirect(url_for("admin_roles_create"))
+
+            role = Role(name=name)
+            db.session.add(role)
+            db.session.flush()
+
+            selected_components = []
+            if component_ids:
+                selected_components = ComponentCatalogItem.query.filter(
+                    ComponentCatalogItem.id.in_(component_ids)
+                ).all()
+            role.components = selected_components
+
+            db.session.commit()
+            flash("Rolle wurde erstellt.", "success")
+            return redirect(url_for("admin_roles_list"))
+
+        return render_template("admin/role_form.html", role=None, components=components)
+
+    @app.route("/admin/roles/<int:role_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_roles_edit(role_id):
+        role = Role.query.get_or_404(role_id)
+        components = ComponentCatalogItem.query.order_by(ComponentCatalogItem.name.asc()).all()
+
+        if request.method == "POST":
+            name = (request.form.get("name") or "").strip()
+            component_ids = request.form.getlist("component_ids")
+
+            if not name:
+                flash("Name ist ein Pflichtfeld.", "danger")
+                return redirect(url_for("admin_roles_edit", role_id=role.id))
+
+            role.name = name
+
+            selected_components = []
+            if component_ids:
+                selected_components = ComponentCatalogItem.query.filter(
+                    ComponentCatalogItem.id.in_(component_ids)
+                ).all()
+            role.components = selected_components
+
+            db.session.commit()
+            flash("Rolle wurde aktualisiert.", "success")
+            return redirect(url_for("admin_roles_list"))
+
+        return render_template("admin/role_form.html", role=role, components=components)
+
+    @app.route("/admin/roles/<int:role_id>/delete", methods=["POST"])
+    @admin_required
+    def admin_roles_delete(role_id):
+        role = Role.query.get_or_404(role_id)
+
+        if db.session.query(User.id).filter(User.role_id == role.id).first():
+            flash("Rolle kann nicht gelöscht werden, solange Benutzer zugeordnet sind.", "danger")
+            return redirect(url_for("admin_roles_list"))
+
+        db.session.delete(role)
+        db.session.commit()
+        flash("Rolle wurde gelöscht.", "info")
+        return redirect(url_for("admin_roles_list"))
 
     # -------------------------
     # FacilityCatalogItem (Ausstattungsgruppen)
@@ -619,6 +722,7 @@ def register_routes(app):
             single_under_component = bool(request.form.get("single_under_component"))
             hide_quantity = bool(request.form.get("hide_quantity"))
             custom_name = request.form.get("custom_name") or None
+            role_ids = request.form.getlist("role_ids")
 
             if is_bool and single_under_component:
                 flash("Wenn bool ausgewählt wird, kann nicht zeitgleich Single Sub aktiviert sein.",
@@ -629,12 +733,17 @@ def register_routes(app):
             component.is_bool = is_bool
             component.single_under_component = single_under_component
             component.hide_quantity = hide_quantity
+            selected_roles = []
+            if role_ids:
+                selected_roles = Role.query.filter(Role.id.in_(role_ids)).all()
+            component.roles = selected_roles
 
             db.session.commit()
             flash("Merkmal wurde aktualisiert.", "success")
             return redirect(url_for("admin_components_list"))
 
-        return render_template("admin/component_form.html", component=component)
+        roles = Role.query.order_by(Role.name.asc()).all()
+        return render_template("admin/component_form.html", component=component, roles=roles)
 
     # -------------------------
     # UnderComponentItem (Merkmalausprägungen)
@@ -703,6 +812,12 @@ def register_routes(app):
     def app_uu_current_data(use_unit_id):
         if current_app.config['DEMO_MODE']:
             return _json_from_file(current_app.config['DEMO_CUR_DATA'])
+        current_user_id = int(get_jwt_identity())
+        user = User.query.get(current_user_id)
+        if not user or not user.role_id:
+            return jsonify({"msg": "user has no role"}), 403
+
+        role_id = user.role_id
 
         def _do_app_uu_current_data(wowi: WowiPy, uu_id: int):
             components = wowi.get_components(use_unit_id=uu_id)
@@ -719,6 +834,10 @@ def register_routes(app):
                     return jsonify({"msg": f"Missing component catalog item '{component.component_catalog_id}'"}), 500
                 if not comp_cat_item.enabled:
                     continue
+                    roles = comp_cat_item.roles.all() if hasattr(comp_cat_item.roles, "all") else comp_cat_item.roles
+                    if not roles or not any(r.id == role_id for r in roles):
+                        continue
+
                 if comp_cat_item.under_components:
                     under_components = []
                     for uc in comp_cat_item.under_components:
@@ -756,7 +875,11 @@ def register_routes(app):
                 })
                 found_types.append(comp_cat_item.id)
 
-            comp_cat = db.session.query(ComponentCatalogItem).filter(ComponentCatalogItem.enabled.is_(True)).all()
+            comp_cat = db.session.query(ComponentCatalogItem).filter(
+                ComponentCatalogItem.enabled.is_(True),
+                ComponentCatalogItem.roles.any(Role.id == role_id),
+            ).all()
+
             cat_item: ComponentCatalogItem
             for cat_item in comp_cat:
                 fac_cat = db.session.get(FacilityCatalogItem, cat_item.facility_catalog_item_id)

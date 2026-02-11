@@ -187,7 +187,6 @@ class ComponentCatalogItem(db.Model):
         "Role",
         secondary="component_role",
         back_populates="components",
-        lazy="dynamic",
     )
 
     @property
