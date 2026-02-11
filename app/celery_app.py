@@ -29,12 +29,12 @@ def _ensure_worker_logging_configured():
 
 
 @after_setup_logger.connect
-def _setup_celery_root_logger(celery_logger, *args, **kwargs):
+def _setup_celery_root_logger(logger=None, *args, **kwargs):
     _ensure_worker_logging_configured()
 
 
 @after_setup_task_logger.connect
-def _setup_celery_task_logger(celery_task_logger, *args, **kwargs):
+def _setup_celery_task_logger(logger=None, *args, **kwargs):
     _ensure_worker_logging_configured()
 
 
