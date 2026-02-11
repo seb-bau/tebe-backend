@@ -24,8 +24,7 @@ def _ensure_worker_logging_configured():
         return
 
     try:
-        # Handler auf root einmalig aufräumen, sonst doppelte Einträge
-        root = logging.getLogger("root")
+        root = logging.getLogger()
         for h in list(root.handlers):
             root.removeHandler(h)
 
@@ -53,11 +52,6 @@ def _ensure_worker_logging_configured():
 
 @after_setup_logger.connect
 def _setup_celery_root_logger(logger=None, *args, **kwargs):
-    _ensure_worker_logging_configured()
-
-
-@after_setup_task_logger.connect
-def _setup_celery_task_logger(logger=None, *args, **kwargs):
     _ensure_worker_logging_configured()
 
 
