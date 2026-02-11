@@ -6,10 +6,7 @@ from flask_jwt_extended import (
     get_jwt_identity,
     get_jwt
 )
-from wowipy.models import Result
-
-from app.erp import create_facility, create_component, edit_component
-from wowipy.wowipy import WowiPy, ComponentElement, MediaData, LicenseAgreement
+from wowipy.wowipy import WowiPy, ComponentElement, LicenseAgreement
 import wowipy.models
 from app.models import User, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, Geolocation
 from app.models import EventItem, FacilityItem
@@ -24,11 +21,7 @@ from wowicache.models import WowiCache, Building, UseUnit, Contract, Contractor,
 from datetime import datetime, timedelta, time, timezone
 import logging
 import numbers
-import os
-import tempfile
-import uuid
-from werkzeug.utils import secure_filename
-from app.helpers import _json_from_file, normalize_exif_orientation
+from app.helpers import _json_from_file
 from flask import session
 from sqlalchemy import func
 
@@ -792,87 +785,25 @@ def register_routes(app):
     @app.route("/app/use-unit/data/write/<int:use_unit_id>", methods=["POST"])
     @jwt_required()
     def app_uu_write_data(use_unit_id):
-        if current_app.config['DEMO_MODE']:
+        if current_app.config["DEMO_MODE"]:
             return jsonify({"msg": "ok"}), 200
 
-        def _do_app_uu_write_data(wowi: WowiPy, uu_id: int):
-            data = request.get_json()
-            print(data)
-            components_updated = 0
-            components_created = 0
-            facilities_created = 0
-            components_deleted = 0
-            for entry in data:
-                if not entry.get("component_catalog_id"):
-                    return jsonify({"msg": "missing component_catalog_id"}), 400
-                comp_cat_item = db.session.get(ComponentCatalogItem, entry.get("component_catalog_id"))
-                if not comp_cat_item:
-                    return jsonify({"msg": "unknown component_catalog_id"}), 400
+        data = request.get_json(silent=True)
+        if not isinstance(data, list):
+            return jsonify({"msg": "invalid payload"}), 400
 
-                if not comp_cat_item.enabled:
-                    return jsonify({"msg": "component_catalog_id disabled"}), 400
+        current_user_id = int(get_jwt_identity())
+        ip_address = request.environ.get("REMOTE_ADDR")
+        user = User.query.get(current_user_id)
+        last_lat = getattr(user, "last_lat", None) if user else None
+        last_lon = getattr(user, "last_lon", None) if user else None
 
-                if not is_numeric(entry.get("quantity")):
-                    return jsonify({"msg": "quantity has to be numeric"}), 400
+        celery.send_task(
+            "tasks.write_use_unit_data",
+            args=[use_unit_id, data, current_user_id, ip_address, last_lat, last_lon],
+        )
 
-                comment = entry.get("comment")
-
-                psub = entry.get("sub_components") or []
-                if not entry.get("component_id"):
-                    if entry.get("is_unknown"):
-                        # Wenn es die Komponente noch nicht gab und sie unbekannt istm können wir sie direkt
-                        # ignorieren
-                        continue
-                    # Wenn der Client die component_id nicht mitsendet, heißt das in der Regel, dass diese Komponente
-                    # noch nicht für die UseUnit existiert.
-                    # TODO: In der Zukunft könnte man an dieser Stelle prüfen, ob das wirklich der Fall ist
-                    # TODO: Es ist ggf. ein Performance-Problem, die Facilities der UU hier jedes mal abzufragen
-                    uu_facilities = wowi.get_facilities(use_unit_id=uu_id)
-                    uu_facility = None
-                    for fac_entry in uu_facilities:
-                        if fac_entry.facility_catalog_id == comp_cat_item.facility_catalog_item_id:
-                            uu_facility = fac_entry.id_
-                            break
-                    if not uu_facility:
-                        uu_facility = create_facility(wowi, comp_cat_item.facility_catalog_item_id, uu_id)
-                        facilities_created += 1
-                    if not uu_facility:
-                        return abort(500, "Error while creating facility.")
-                    print(f"sub {psub}")
-                    current_user_id = int(get_jwt_identity())
-                    user: User
-                    user = User.query.get(current_user_id)
-                    user.last_action = datetime.now()
-                    db.session.commit()
-                    component_id = create_component(wowi,
-                                                    component_catalog_id=comp_cat_item.id,
-                                                    facility_id=uu_facility,
-                                                    count=int(entry.get("quantity")),
-                                                    psub_components=psub,
-                                                    puser=user,
-                                                    puu_id=uu_id,
-                                                    comment=comment)
-                    components_created += 1
-                    if not component_id:
-                        return abort(500, "Error while creating component")
-                    logger.info(f"app_uu_write_data: Created component {component_id}")
-                else:
-                    unknown = bool(entry.get("is_unknown"))
-                    edit_component(wowi, entry.get("component_id"), int(entry.get("quantity")), psub_components=psub,
-                                   unknown=unknown, comment=comment)
-                    if not unknown:
-                        components_updated += 1
-                    else:
-                        components_deleted += 1
-
-            return jsonify({
-                "facilities_created": facilities_created,
-                "components_created": components_created,
-                "components_updated": components_updated,
-                "components_deleted": components_deleted
-            })
-        oretval = with_wowi_retry(_do_app_uu_write_data, uu_id=use_unit_id)
-        return oretval
+        return jsonify({"status": "queued"}), 200
 
     def building_ids_from_radius(lat, lon, radius_m):
         locations_found = get_buildings_in_radius_m(lat, lon, radius_m=radius_m)
@@ -892,10 +823,16 @@ def register_routes(app):
             Building.town.ilike(like),
         ))
 
+    from app.celery_app import celery
+    from werkzeug.utils import secure_filename
+    import os
+    import tempfile
+    import uuid
+
     @app.route("/app/use-unit/photos", methods=["POST"])
     @jwt_required()
     def route_use_unit_photos():
-        if current_app.config['DEMO_MODE']:
+        if current_app.config["DEMO_MODE"]:
             return jsonify({"msg": "ok"}), 201
 
         photo = request.files.get("photo")
@@ -917,30 +854,8 @@ def register_routes(app):
         stored_path = os.path.join(temp_dir, stored_name)
 
         photo.save(stored_path)
-        try:
-            normalize_exif_orientation(stored_path)
-        except Exception as e:
-            logger.warning(f"Could not normalize EXIF orientation for '{stored_path}': {e}")
-        logger.debug(f"Incoming picture saved to '{stored_path}'")
 
-        def _do_app_uu_upload_photo(wowi: WowiPy, uu_id: int, media_path: str):
-            wowi_file: MediaData
-            rslt: wowipy.models.Result
-            wowi_file = MediaData(
-                file_name=os.path.basename(media_path),
-                creation_date_str=datetime.now().strftime("%y-%m-%d"),
-                entity_type_name="UseUnit",
-                entity_id=uu_id
-            )
-            wowi_file.picture_type_name = "Sonstiges"
-            uplresult: Result
-            uplresult = wowi.upload_media(wowi_file, media_path)
-            if uplresult.status_code not in [200, 201]:
-                logger.error(f"upload_media: Upload failed for use unit id '{uu_id}'. Message: {uplresult.message}")
-            else:
-                logger.info(f"upload_media: Uploaded photo to use unit '{uu_id}. Result: {uplresult.message}'")
-
-        with_wowi_retry(_do_app_uu_upload_photo, uu_id=use_unit_id, media_path=stored_path)
+        celery.send_task("tasks.upload_use_unit_photo", args=[use_unit_id, stored_path])
 
         return jsonify({"status": "ok", "use_unit_id": use_unit_id, "filename": stored_name}), 201
 

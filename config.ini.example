@@ -30,3 +30,7 @@ component_status=2
 [MicrosoftAuth]
 tenant_id =
 client_id =
+
+[Celery]
+broker_url = redis://localhost:6379/0
+result_backend = redis://localhost:6379/1

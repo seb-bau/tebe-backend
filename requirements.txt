@@ -15,3 +15,5 @@ uwsgi
 pymysql
 PyJWT[crypto]
 Pillow
+celery
+redis

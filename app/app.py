@@ -6,6 +6,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from app import log
 from .extensions import db, migrate, bcrypt, jwt, login_manager
 from datetime import timedelta
+from app.celery_app import init_celery
 
 
 def create_app():
@@ -79,6 +80,23 @@ def create_app():
         jti = jwt_payload["jti"]
         token = db.session.query(TokenBlocklist).filter_by(jti=jti).first()
         return token is not None
+
+    default_broker_url = "redis://localhost:6379/0"
+    default_result_backend = "redis://localhost:6379/1"
+    try:
+        celery_broker_url = config.get("Celery", "broker_url", fallback=default_broker_url)
+        celery_result_backend = config.get("Celery", "result_backend", fallback=default_result_backend)
+    except KeyError:
+        celery_broker_url = default_broker_url
+        celery_result_backend = default_result_backend
+
+    tapp.config.setdefault("CELERY_BROKER_URL", celery_broker_url)
+    tapp.config.setdefault("CELERY_RESULT_BACKEND", celery_result_backend)
+
+    celery = init_celery(tapp)
+
+    from app.tasks import register_tasks
+    register_tasks(celery)
 
     return tapp
 
