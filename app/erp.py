@@ -8,7 +8,7 @@ from threading import Lock
 from datetime import datetime
 import re
 
-logger = logging.getLogger('root')
+logger = logging.getLogger()
 
 
 class WowiPermanentError(Exception):

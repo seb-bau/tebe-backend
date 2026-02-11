@@ -9,7 +9,7 @@ from wowipy.wowipy import WowiPy, MediaData
 from app.erp import create_facility, create_component, edit_component, with_wowi_retry, WowiPermanentError
 
 
-logger = logging.getLogger("root")
+logger = logging.getLogger()
 
 
 class PermanentRequestError(Exception):

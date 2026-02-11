@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 def setup_custom_logger(name, log_method: str, log_level: str, graylog_host: str = None, graylog_port: int = None):
-    logger = logging.getLogger(name)
+    logger = logging.getLogger() if name == "root" else logging.getLogger(name)
     log_levels = {'debug': 10, 'info': 20, 'warning': 30, 'error': 40, 'critical': 50}
     logger.setLevel(log_levels.get(log_level, 20))
 
