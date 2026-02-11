@@ -282,6 +282,7 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
     _raise_for_result("create_facility", cr_f_result)
 
     new_facility_for_cache = FacilityItem(
+        id=cr_f_result.data["Id"],
         name=facility_cat_item.name,
         facility_catalog_item_id=facility_cat_item.id
     )
