@@ -18,10 +18,14 @@ def setup_custom_logger(name, log_method: str, log_level: str, graylog_host: str
                             filemode='a')
 
     elif log_method == "graylog":
-        graylog_host = graylog_host
-        graylog_port = graylog_port
-        print(f"graylog {graylog_host}:{graylog_port}")
         handler = graypy.GELFUDPHandler(graylog_host, graylog_port)
+        for h in logger.handlers:
+
+            if isinstance(h, graypy.GELFUDPHandler):
+                return logger
+
         logger.addHandler(handler)
+
+        logger.propagate = False
 
     return logger
