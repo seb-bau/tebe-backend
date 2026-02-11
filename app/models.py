@@ -20,6 +20,40 @@ component_undercomponent = db.Table(
 )
 
 
+component_role = db.Table(
+    "component_role",
+    db.Column(
+        "component_id",
+        db.Integer,
+        db.ForeignKey("component_catalog_item.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "role_id",
+        db.Integer,
+        db.ForeignKey("role.id"),
+        primary_key=True,
+    ),
+)
+
+
+class Role(db.Model):
+    __tablename__ = 'role'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=True)
+    components = db.relationship(
+        "ComponentCatalogItem",
+        secondary="component_role",
+        back_populates="roles"
+    )
+
+    users = db.relationship(
+        "User",
+        back_populates="role"
+    )
+
+
 class User(db.Model, UserMixin):
     __tablename__ = 'user'
 
@@ -38,6 +72,16 @@ class User(db.Model, UserMixin):
     enable_score = db.Column(db.Boolean, nullable=True, default=True)
     microsoft_tid = db.Column(db.String(36), nullable=True, index=True)
     microsoft_oid = db.Column(db.String(36), nullable=True, index=True)
+    role_id = db.Column(
+        db.Integer,
+        db.ForeignKey("role.id"),
+        nullable=True
+    )
+
+    role = db.relationship(
+        "Role",
+        back_populates="users",
+    )
 
     def set_password(self, password: str):
         self.password_hash = bcrypt.generate_password_hash(password).decode("utf-8")
@@ -137,6 +181,13 @@ class ComponentCatalogItem(db.Model):
         "UnderComponentItem",
         secondary="component_undercomponent",
         back_populates="components"
+    )
+
+    roles = db.relationship(
+        "Role",
+        secondary="component_role",
+        back_populates="components",
+        lazy="dynamic",
     )
 
     @property
