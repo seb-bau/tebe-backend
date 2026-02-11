@@ -280,6 +280,8 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
         use_unit_id=use_unit_id
     )
     _raise_for_result("create_facility", cr_f_result)
+    logger.info(f"create_facility: Use Unit '{use_unit_id}' "
+                f"facility '{cr_f_result.data['Id']}' with name '{facility_cat_item.name}' created. ")
 
     new_facility_for_cache = FacilityItem(
         id=cr_f_result.data["Id"],
@@ -335,6 +337,10 @@ def create_component(
         comment=comment
     )
     _raise_for_result("create_component", cr_f_result)
+    logger.info(f"create_component: Use Unit '{puu_id}' "
+                f"component '{cr_f_result.data['Id']}' created. Count: {count} "
+                f"facility_id: {facility_id} under_component_ids: '{str(sub_components)}' "
+                f"comment '{comment}'")
 
     new_event = EventItem(
         user_id=puser.id,
@@ -451,6 +457,10 @@ def edit_component(
         comment=comment
     )
     _raise_for_result("edit_component", cr_f_result)
+    logger.info(f"edit_component: Use Unit '{the_component.use_unit_id}' "
+                f"component '{component_id}' edited. Count: {count} "
+                f"facility_id: {the_component.facility_id} under_component_ids: '{str(sub_components)}' "
+                f"comment '{comment}'")
 
     if new_event is not None:
         db.session.add(new_event)
