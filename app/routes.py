@@ -734,6 +734,8 @@ def register_routes(app):
                     under_components = None
 
                 fac_item = db.session.get(FacilityItem, component.facility_id)
+                logger.error(f"app_uu_current_data: No facility found for component '{component.id_}', "
+                             f"facility id '{component.facility_id}'")
                 fac_cat = db.session.get(FacilityCatalogItem, fac_item.facility_catalog_item_id)
                 retval_existing.append({
                     "id": component.id_,
