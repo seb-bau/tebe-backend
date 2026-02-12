@@ -3,6 +3,7 @@ from app.extensions import db
 from app.models import User
 from app.geo import update_geolocation, get_buildings_in_radius_m
 from app.erp import sync_facility_and_component_catalog
+from app.entra_sync import sync_entra_users
 
 
 def register_cli_commands(app):
@@ -18,6 +19,7 @@ def register_cli_commands(app):
             click.echo(f"User '{email}' already exists.")
             return
 
+        # noinspection PyArgumentList
         user = User(email=email)
         user.set_password(password)
         user.is_admin = bool(admin)
@@ -77,3 +79,7 @@ def register_cli_commands(app):
 
         click.echo(f"Result: {results}")
 
+    @app.cli.command("sync-entra-users")
+    def cli_sync_entra_users():
+        results = sync_entra_users(app)
+        click.echo(f"Result: {results}")

@@ -30,6 +30,18 @@ component_status=2
 [MicrosoftAuth]
 tenant_id =
 client_id =
+client_secret =
+
+[EntraSync]
+# group or all
+mode=group
+group_id=00000000-0000-0000-0000-000000000000
+# Role must exist
+default_role=User
+
+# Example: Special Admin role
+role_override_group_id=<group-id-for-special-role>
+role_override_role=Admin
 
 [Celery]
 broker_url = redis://localhost:6379/0

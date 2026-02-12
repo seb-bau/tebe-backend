@@ -25,6 +25,7 @@ import numbers
 from app.helpers import _json_from_file
 from flask import session
 from sqlalchemy import func
+from app.entra_sync import sync_entra_users
 
 from app.microsoft_auth import (
     validate_id_token,
@@ -280,10 +281,6 @@ def register_routes(app):
         oid = claims.get("oid")
         email = (claims.get("email") or claims.get("preferred_username") or claims.get("upn") or "").strip().lower()
 
-        print(f"Preferred username '{claims.get('preferred_username')}'")
-        print(f"upn '{claims.get('upn')}'")
-        print(f"email '{claims.get('email')}'")
-
         user = db.session.query(User).filter_by(microsoft_tid=cfg["tenant_id"], microsoft_oid=oid).first()
 
         if user is None and email:
@@ -458,6 +455,23 @@ def register_routes(app):
             return redirect(url_for("admin_users_list"))
         roles = Role.query.order_by(Role.name.asc()).all()
         return render_template("admin/user_form.html", user=None, roles=roles)
+
+    @app.route("/admin/users/sync-entra", methods=["POST"])
+    @admin_required
+    def admin_users_sync_entra():
+        try:
+            results = sync_entra_users(current_app)
+        except Exception as e:
+            logger.error(f"admin_users_sync_entra: {str(e)}")
+            flash("Entra user sync failed.", "danger")
+            return redirect(url_for("admin_users_list"))
+
+        flash(
+            f"Entra user sync finished. Created: {results.get('created')}, Updated: {results.get('updated')}, "
+            f"Skipped: {results.get('skipped')}, Errors: {results.get('errors')}",
+            "success",
+        )
+        return redirect(url_for("admin_users_list"))
 
     # Benutzer bearbeiten
     @app.route("/admin/users/<int:user_id>/edit", methods=["GET", "POST"])
