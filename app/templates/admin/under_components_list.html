@@ -15,18 +15,6 @@
                    placeholder="Name oder benutzerdefinierter Name..."
                    value="{{ q or '' }}">
         </div>
-        <div class="col-md-4">
-            <label for="status" class="form-label">Status</label>
-            <select class="form-select" id="status" name="status">
-                <option value="">Alle</option>
-                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>
-                    Nur aktive
-                </option>
-                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>
-                    Nur inaktive
-                </option>
-            </select>
-        </div>
         <div class="col-md-4 d-flex gap-2">
             <button type="submit" class="btn btn-primary mt-auto">
                 Filtern
@@ -46,7 +34,6 @@
                     <th>Name (ERP)</th>
                     <th>Benutzerdefinierter Name</th>
                     <th>Anzeigename</th>
-                    <th>Aktiv</th>
                     <th>Verknüpfte Merkmale (Anzahl)</th>
                     <th></th>
                 </tr>
@@ -58,13 +45,6 @@
                         <td>{{ uc.name }}</td>
                         <td>{{ uc.custom_name or "–" }}</td>
                         <td>{{ uc.display_name }}</td>
-                        <td>
-                            {% if uc.enabled %}
-                                <span class="badge bg-success">Aktiv</span>
-                            {% else %}
-                                <span class="badge bg-secondary">Inaktiv</span>
-                            {% endif %}
-                        </td>
                         <td>{{ uc.components.count() }}</td>
                         <td class="text-end">
                             <a href="{{ url_for('admin_under_components_edit', under_component_id=uc.id) }}"

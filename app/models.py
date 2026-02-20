@@ -202,7 +202,6 @@ class UnderComponentItem(db.Model):
     name = db.Column(db.String(100))
 
     # custom data
-    enabled = db.Column(db.Boolean, default=False)
     custom_name = db.Column(db.String(200), nullable=True)
 
     # connections

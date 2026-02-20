@@ -1,5 +1,5 @@
 from wowipy.wowipy import WowiPy, Result
-from wowipy.models import FacilityCatalogElement, ComponentCatalogElement, UnderComponent, FacilityElement
+from wowipy.models import FacilityCatalogElement, ComponentCatalogElement, UnderComponentCatalogElement, FacilityElement
 from flask import current_app
 import logging
 from app.extensions import db
@@ -132,8 +132,7 @@ def sync_facility_and_component_catalog():
     facility_catalog_items = wowi.get_facility_catalog()
     component_catalog_items = wowi.get_component_catalog()
     all_facilities = wowi.get_facilities(fetch_all=True)
-    all_components = wowi.get_components(fetch_all=True)
-    all_under_components = wowi.extract_under_components(all_components)
+    under_component_catalog_items = wowi.get_under_component_catalog()
 
     fac_cat_ids = []
     entry: FacilityCatalogElement
@@ -232,37 +231,24 @@ def sync_facility_and_component_catalog():
             db.session.delete(comp_cat_check)
     db.session.commit()
 
-    under_components_in_use = []
-    under_component: UnderComponent
-    component_catalog_item: ComponentCatalogItem
-    for component_catalog_id in all_under_components:
-        component_catalog_item = db.session.get(ComponentCatalogItem, component_catalog_id)
-        under_comp_for_cat_item = []
-        for under_component in all_under_components[component_catalog_id]:
-            under_comp_for_cat_item.append(under_component.id_)
-            if under_component.id_ not in under_components_in_use:
-                under_components_in_use.append(under_component.id_)
-            find_under_component = db.session.get(UnderComponentItem, under_component.id_)
-            if find_under_component:
-                find_under_component.name = under_component.name
-            else:
-                find_under_component = UnderComponentItem(
-                    id=under_component.id_,
-                    name=under_component.name
-                )
-                db.session.add(find_under_component)
-            if ((not component_catalog_item.under_components) or
-                    (find_under_component not in component_catalog_item.under_components)):
-                component_catalog_item.under_components.append(find_under_component)
-            rev_und_comp: UnderComponentItem
-            for rev_und_comp in component_catalog_item.under_components:
-                if rev_und_comp.id not in under_comp_for_cat_item:
-                    component_catalog_item.under_components.remove(rev_und_comp)
-    db.session.commit()
+    under_comp_cat_ids = []
+    entry3: UnderComponentCatalogElement
+    for entry3 in under_component_catalog_items:
+        under_comp_cat_ids.append(entry3.id_)
+        find_under_component = db.session.get(UnderComponentItem, entry3.id_)
+        if find_under_component:
+            find_under_component.name = entry3.name
+        else:
+            find_under_component = UnderComponentItem(
+                id=entry3.id_,
+                name=entry3.name
+            )
+            db.session.add(find_under_component)
+        db.session.commit()
 
     all_under = db.session.query(UnderComponentItem).all()
     for under_check in all_under:
-        if under_check.id not in under_components_in_use:
+        if under_check.id not in under_comp_cat_ids:
             db.session.delete(under_check)
     db.session.commit()
 

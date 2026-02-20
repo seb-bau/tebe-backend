@@ -626,7 +626,6 @@ def register_routes(app):
         # Basic query parameters for UX
         page = request.args.get("page", 1, type=int)
         q = (request.args.get("q") or "").strip()
-        status_filter = request.args.get("status")  # "active", "inactive" or None
 
         query = FacilityCatalogItem.query
 
@@ -641,12 +640,6 @@ def register_routes(app):
                 )
             )
 
-        # Filter by enabled status
-        if status_filter == "active":
-            query = query.filter_by(enabled=True)
-        elif status_filter == "inactive":
-            query = query.filter_by(enabled=False)
-
         # Default ordering
         query = query.order_by(FacilityCatalogItem.name.asc())
 
@@ -658,8 +651,7 @@ def register_routes(app):
             "admin/facilities_list.html",
             facilities=facilities,
             pagination=pagination,
-            q=q,
-            status_filter=status_filter,
+            q=q
         )
 
     @app.route("/admin/facilities/<int:facility_id>/edit", methods=["GET", "POST"])
@@ -737,16 +729,29 @@ def register_routes(app):
             hide_quantity = bool(request.form.get("hide_quantity"))
             custom_name = request.form.get("custom_name") or None
             role_ids = request.form.getlist("role_ids")
+            under_component_ids = request.form.getlist("under_component_ids")
 
             if is_bool and single_under_component:
-                flash("Wenn bool ausgewählt wird, kann nicht zeitgleich Single Sub aktiviert sein.",
-                      category="error")
+                flash("Wenn bool ausgewählt wird, kann nicht zeitgleich Single Sub aktiviert sein.", category="error")
                 return redirect(url_for("admin_components_list"))
+
+            selected_under_components = []
+            if under_component_ids:
+                selected_under_components = UnderComponentItem.query.filter(
+                    UnderComponentItem.id.in_(under_component_ids)
+                ).all()
+
+            if single_under_component and len(selected_under_components) > 1:
+                flash("Für dieses Merkmal darf nur eine Merkmalausprägung ausgewählt werden.", category="error")
+                return redirect(url_for("admin_components_edit", component_id=component.id))
+
             component.enabled = enabled
             component.custom_name = custom_name
             component.is_bool = is_bool
             component.single_under_component = single_under_component
             component.hide_quantity = hide_quantity
+            component.under_components = selected_under_components
+
             selected_roles = []
             if role_ids:
                 selected_roles = Role.query.filter(Role.id.in_(role_ids)).all()
@@ -757,7 +762,13 @@ def register_routes(app):
             return redirect(url_for("admin_components_list"))
 
         roles = Role.query.order_by(Role.name.asc()).all()
-        return render_template("admin/component_form.html", component=component, roles=roles)
+        under_components = UnderComponentItem.query.order_by(UnderComponentItem.name.asc()).all()
+        return render_template(
+            "admin/component_form.html",
+            component=component,
+            roles=roles,
+            under_components=under_components,
+        )
 
     # -------------------------
     # UnderComponentItem (Merkmalausprägungen)
@@ -768,7 +779,6 @@ def register_routes(app):
         """List under component items with search, filters and pagination."""
         page = request.args.get("page", 1, type=int)
         q = (request.args.get("q") or "").strip()
-        status_filter = request.args.get("status")  # "active", "inactive" or None
 
         query = UnderComponentItem.query
 
@@ -781,11 +791,6 @@ def register_routes(app):
                 )
             )
 
-        if status_filter == "active":
-            query = query.filter(UnderComponentItem.enabled.is_(True))
-        elif status_filter == "inactive":
-            query = query.filter(UnderComponentItem.enabled.is_(False))
-
         query = query.order_by(UnderComponentItem.name.asc())
 
         pagination = query.paginate(page=page, per_page=25, error_out=False)
@@ -795,8 +800,7 @@ def register_routes(app):
             "admin/under_components_list.html",
             under_components=under_components,
             pagination=pagination,
-            q=q,
-            status_filter=status_filter,
+            q=q
         )
 
     @app.route("/admin/under_components/<int:under_component_id>/edit", methods=["GET", "POST"])
@@ -806,19 +810,27 @@ def register_routes(app):
         under_component = UnderComponentItem.query.get_or_404(under_component_id)
 
         if request.method == "POST":
-            enabled = bool(request.form.get("enabled"))
             custom_name = request.form.get("custom_name") or None
+            component_ids = request.form.getlist("component_ids")
 
-            under_component.enabled = enabled
+            selected_components = []
+            if component_ids:
+                selected_components = ComponentCatalogItem.query.filter(
+                    ComponentCatalogItem.id.in_(component_ids)
+                ).all()
+
             under_component.custom_name = custom_name
+            under_component.components = selected_components
 
             db.session.commit()
             flash("Merkmalausprägung wurde aktualisiert.", "success")
             return redirect(url_for("admin_under_components_list"))
 
+        components = ComponentCatalogItem.query.order_by(ComponentCatalogItem.name.asc()).all()
         return render_template(
             "admin/under_component_form.html",
             under_component=under_component,
+            components=components,
         )
 
     @app.route("/app/use-unit/data/current/<int:use_unit_id>", methods=["GET"])

@@ -92,7 +92,45 @@
                 Soll Mege und Einheit ausgeblendet werden?
             </label>
         </div>
+        <div class="mb-4">
+    <label for="under_component_ids" class="form-label">Zugeordnete Merkmalausprägungen</label>
+    <select class="form-select" id="under_component_ids" name="under_component_ids" multiple size="10">
+        {% for uc in under_components %}
+            <option value="{{ uc.id }}" {% if uc in component.under_components %}selected{% endif %}>
+                {{ uc.display_name }}
+            </option>
+        {% endfor %}
+    </select>
+    <div class="form-text">
+        Die Zuordnung kann durch den ERP-Abgleich überschrieben werden.
+    </div>
+</div>
 
+<script>
+    (function () {
+        const singleToggle = document.getElementById("single_under_component");
+        const select = document.getElementById("under_component_ids");
+
+        function applyMode() {
+            const single = singleToggle && singleToggle.checked;
+            if (single) {
+                select.removeAttribute("multiple");
+                select.size = 1;
+                const selected = Array.from(select.options).filter(o => o.selected);
+                selected.slice(1).forEach(o => o.selected = false);
+            } else {
+                select.setAttribute("multiple", "multiple");
+                select.size = 10;
+            }
+        }
+
+        if (singleToggle && select) {
+            singleToggle.addEventListener("change", applyMode);
+            select.addEventListener("change", applyMode);
+            applyMode();
+        }
+    })();
+</script>
         <div class="mb-4">
                 <label for="role_ids" class="form-label">Rollen</label>
                 <select class="form-select" id="role_ids" name="role_ids" multiple size="8">

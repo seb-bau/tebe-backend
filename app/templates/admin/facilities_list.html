@@ -14,18 +14,6 @@
                    placeholder="Name, Status, benutzerdefinierter Name..."
                    value="{{ q or '' }}">
         </div>
-        <div class="col-md-4">
-            <label for="status" class="form-label">Status</label>
-            <select class="form-select" id="status" name="status">
-                <option value="">Alle</option>
-                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>
-                    Nur aktive
-                </option>
-                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>
-                    Nur inaktive
-                </option>
-            </select>
-        </div>
         <div class="col-md-4 d-flex gap-2">
             <button type="submit" class="btn btn-primary mt-auto">
                 Filtern
@@ -45,11 +33,8 @@
                     <th>Name (ERP)</th>
                     <th>Benutzerdefinierter Name</th>
                     <th>Anzeigename</th>
-                    <th>Status</th>
-                    <th>Verfügbar (Land)</th>
                     <th>Verfügbar (Gebäude)</th>
                     <th>Verfügbar (Nutzungseinheit)</th>
-                    <th>Relevanz (Instandsetzung)</th>
                     <th>Eingeklappt</th>
                     <th></th>
                 </tr>
@@ -61,11 +46,8 @@
                         <td>{{ facility.name }}</td>
                         <td>{{ facility.custom_name or "–" }}</td>
                         <td>{{ facility.display_name }}</td>
-                        <td>{{ facility.status_name or facility.status_id }}</td>
-                        <td>{{ "Ja" if facility.available_economic_unit_land else "Nein" }}</td>
                         <td>{{ "Ja" if facility.available_building else "Nein" }}</td>
                         <td>{{ "Ja" if facility.available_use_unit else "Nein" }}</td>
-                        <td>{{ "Ja" if facility.repair_relevance else "Nein" }}</td>
                         <td>
                             {% if facility.view_folded %}
                                 <span class="badge bg-success">Aktiv</span>
