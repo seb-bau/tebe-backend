@@ -1072,6 +1072,16 @@ def register_routes(app):
                 except (ValueError, AttributeError):
                     person_role = None
 
+                # Auch sekundäre Rufnummern übertragen
+                additional_numbers = []
+                communications = the_person.communications
+                if communications:
+                    for com_entry in communications:
+                        if com_entry.communication_type.id_ == 1 or com_entry.communication_type.id_ == 3:
+                            content = com_entry.content
+                            if content != person_phone and content != person_mobile:
+                                additional_numbers.append(content)
+
                 if person_email or person_phone or person_mobile:
                     contact_entry = {
                         "role": person_role,
@@ -1080,7 +1090,8 @@ def register_routes(app):
                         "email": person_email,
                         "phone": person_phone,
                         "mobile": person_mobile,
-                        "birth_date": person_birth_date
+                        "birth_date": person_birth_date,
+                        "additional_numbers": additional_numbers
                     }
                     contact_items.append(contact_entry)
             if not contact_items:
