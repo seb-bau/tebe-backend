@@ -1,9 +1,11 @@
 from wowipy.wowipy import WowiPy, Result
-from wowipy.models import FacilityCatalogElement, ComponentCatalogElement, UnderComponentCatalogElement, FacilityElement
+from wowipy.models import (FacilityCatalogElement, ComponentCatalogElement, UnderComponentCatalogElement,
+                           FacilityElement)
 from flask import current_app
 import logging
 from app.extensions import db
-from app.models import FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem
+from app.models import (FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem,
+                        EstatePictureType, MediaEntity)
 from threading import Lock
 from datetime import datetime
 import re
@@ -126,14 +128,8 @@ def _raise_for_result(op_name: str, result: Result):
     raise WowiTransientError(f"{op_name}: {status} {msg}")
 
 
-def sync_facility_and_component_catalog():
-    wowi = get_wowi_client()
-
+def sync_facility_catalog(wowi: WowiPy):
     facility_catalog_items = wowi.get_facility_catalog()
-    component_catalog_items = wowi.get_component_catalog()
-    all_facilities = wowi.get_facilities(fetch_all=True)
-    under_component_catalog_items = wowi.get_under_component_catalog()
-
     fac_cat_ids = []
     entry: FacilityCatalogElement
     for entry in facility_catalog_items:
@@ -161,6 +157,15 @@ def sync_facility_and_component_catalog():
             db.session.add(find_facility)
         db.session.commit()
 
+    all_fac_cats = db.session.query(FacilityCatalogItem).all()
+    for fac_cat_check in all_fac_cats:
+        if fac_cat_check.id not in fac_cat_ids:
+            db.session.delete(fac_cat_check)
+    db.session.commit()
+
+
+def sync_facility_items(wowi: WowiPy):
+    all_facilities = wowi.get_facilities(fetch_all=True)
     fac_ids = []
     entry_fac: FacilityElement
     for entry_fac in all_facilities:
@@ -184,12 +189,9 @@ def sync_facility_and_component_catalog():
             db.session.delete(fac_check)
     db.session.commit()
 
-    all_fac_cats = db.session.query(FacilityCatalogItem).all()
-    for fac_cat_check in all_fac_cats:
-        if fac_cat_check.id not in fac_cat_ids:
-            db.session.delete(fac_cat_check)
-    db.session.commit()
 
+def sync_component_catalog(wowi: WowiPy):
+    component_catalog_items = wowi.get_component_catalog()
     comp_cat_ids = []
     entry2: ComponentCatalogElement
     for entry2 in component_catalog_items:
@@ -231,6 +233,9 @@ def sync_facility_and_component_catalog():
             db.session.delete(comp_cat_check)
     db.session.commit()
 
+
+def sync_under_component_catalog(wowi: WowiPy):
+    under_component_catalog_items = wowi.get_under_component_catalog()
     under_comp_cat_ids = []
     entry3: UnderComponentCatalogElement
     for entry3 in under_component_catalog_items:
@@ -251,6 +256,64 @@ def sync_facility_and_component_catalog():
         if under_check.id not in under_comp_cat_ids:
             db.session.delete(under_check)
     db.session.commit()
+
+
+def sync_estate_picture_types(wowi: WowiPy):
+    estate_picture_types = wowi.get_estate_picture_types()
+    picture_type_ids = []
+    for entry3 in estate_picture_types:
+        picture_type_ids.append(entry3.id_)
+        find_pic_type = db.session.get(EstatePictureType, entry3.id_)
+        if find_pic_type:
+            find_pic_type.name = entry3.name
+            find_pic_type.code = entry3.code
+        else:
+            find_pic_type = EstatePictureType(
+                id=entry3.id_,
+                name=entry3.name,
+                code=entry3.code
+            )
+            db.session.add(find_pic_type)
+        db.session.commit()
+
+    all_pic_types = db.session.query(EstatePictureType).all()
+    for pic_check in all_pic_types:
+        if pic_check.id not in picture_type_ids:
+            db.session.delete(pic_check)
+    db.session.commit()
+
+
+def sync_media_entities(wowi: WowiPy):
+    media_entities = wowi.get_media_entities()
+    media_ids = []
+    for entry3 in media_entities:
+        media_ids.append(entry3.id_)
+        find_type = db.session.get(MediaEntity, entry3.id_)
+        if find_type:
+            find_type.name = entry3.name
+        else:
+            find_type = MediaEntity(
+                id=entry3.id_,
+                name=entry3.name
+            )
+            db.session.add(find_type)
+        db.session.commit()
+
+    all_types = db.session.query(MediaEntity).all()
+    for type_check in all_types:
+        if type_check.id not in media_ids:
+            db.session.delete(type_check)
+    db.session.commit()
+
+
+def sync_erp_data():
+    wowi = get_wowi_client()
+    sync_facility_catalog(wowi)
+    sync_facility_items(wowi)
+    sync_component_catalog(wowi)
+    sync_under_component_catalog(wowi)
+    sync_estate_picture_types(wowi)
+    sync_media_entities(wowi)
 
 
 def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) -> int:

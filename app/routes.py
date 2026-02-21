@@ -9,7 +9,7 @@ from flask_jwt_extended import (
 from wowipy.wowipy import WowiPy, ComponentElement, LicenseAgreement
 import wowipy.models
 from app.models import (User, Role, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem,
-                        Geolocation, RawPayload)
+                        Geolocation, RawPayload, MediaEntity, EstatePictureType)
 from app.models import EventItem, FacilityItem
 from app.extensions import db
 from flask import current_app, send_file
@@ -983,6 +983,38 @@ def register_routes(app):
     import tempfile
     import uuid
 
+    @app.route("/app/media_catalog", methods=["GET"])
+    @jwt_required()
+    def route_media_catalog():
+        if current_app.config["DEMO_MODE"]:
+            return jsonify({"msg": "ok"}), 201
+
+        picture_types = []
+        media_entities = []
+
+        all_types = db.session.query(EstatePictureType).all()
+        for entry in all_types:
+            new_retval = {
+                "id": entry.id,
+                "name": entry.name,
+                "code": entry.code
+            }
+            picture_types.append(new_retval)
+
+        all_entites = db.session.query(MediaEntity).all()
+        for entry in all_entites:
+            new_retval = {
+                "id": entry.id,
+                "name": entry.name
+            }
+            media_entities.append(new_retval)
+
+        complete_ret = {
+            "picture_types": picture_types,
+            "media_entities": media_entities
+        }
+        return jsonify(complete_ret)
+
     @app.route("/app/use-unit/photos", methods=["POST"])
     @jwt_required()
     def route_use_unit_photos():
@@ -991,13 +1023,30 @@ def register_routes(app):
 
         photo = request.files.get("photo")
         use_unit_id_raw = request.form.get("use_unit_id")
+        description = request.form.get("description")
+        current_user_id = int(get_jwt_identity())
+        ip_address = request.environ.get("REMOTE_ADDR")
+        user = User.query.get(current_user_id)
+        last_lat = getattr(user, "last_lat", None) if user else None
+        last_lon = getattr(user, "last_lon", None) if user else None
+        try:
+            picture_type = int(request.form.get("picture_type"))
+            media_entity = int(request.form.get("media_entity"))
+        except ValueError as e:
+            logger.error(f"route_use_unit_photos: User '{user.name}' tried to upload photo to uu "
+                         f"'{str(use_unit_id_raw)}' with error '{str(e)}'")
+            return jsonify({"status": "error", "message": "Incorrect values for picture_type or media_entity"}), 400
 
         if photo is None or not photo.filename:
+            logger.error(f"route_use_unit_photos: User '{user.name}' tried to upload photo to uu "
+                         f"'{str(use_unit_id_raw)}' with error: Missing photo")
             return jsonify({"status": "error", "message": "Missing photo"}), 400
 
         try:
             use_unit_id = int(use_unit_id_raw)
         except (TypeError, ValueError):
+            logger.error(f"route_use_unit_photos: User '{user.name}' tried to upload photo to uu "
+                         f"'{str(use_unit_id_raw)}' with error: Invalid use unit id")
             return jsonify({"status": "error", "message": "Invalid use_unit_id"}), 400
 
         temp_dir = os.path.join(tempfile.gettempdir(), "tebe_use_unit_photos")
@@ -1009,7 +1058,15 @@ def register_routes(app):
 
         photo.save(stored_path)
 
-        celery.send_task("tasks.upload_use_unit_photo", args=[use_unit_id, stored_path])
+        celery.send_task("tasks.upload_use_unit_photo", args=[use_unit_id,
+                                                              stored_path,
+                                                              picture_type,
+                                                              media_entity,
+                                                              description,
+                                                              current_user_id,
+                                                              ip_address,
+                                                              last_lat,
+                                                              last_lon])
 
         return jsonify({"status": "ok", "use_unit_id": use_unit_id, "filename": stored_name}), 201
 

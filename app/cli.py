@@ -2,7 +2,7 @@ import click
 from app.extensions import db
 from app.models import User
 from app.geo import update_geolocation, get_buildings_in_radius_m
-from app.erp import sync_facility_and_component_catalog
+from app.erp import sync_erp_data
 from app.entra_sync import sync_entra_users
 
 
@@ -75,7 +75,7 @@ def register_cli_commands(app):
 
     @app.cli.command("sync-erp")
     def cli_sync_erp():
-        results = sync_facility_and_component_catalog()
+        results = sync_erp_data()
 
         click.echo(f"Result: {results}")
 

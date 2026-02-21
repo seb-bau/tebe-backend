@@ -261,3 +261,18 @@ class RawPayload(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     stamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
     payload = db.Column(db.JSON)
+
+
+class EstatePictureType(db.Model):
+    __tablename__ = "estate_picture_type"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    code = db.Column(db.String(200), nullable=False)
+
+
+class MediaEntity(db.Model):
+    __tablename__ = "media_entity"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)

@@ -3,11 +3,10 @@ import os
 from datetime import datetime
 import re
 from app.extensions import db
-from app.models import User, ComponentCatalogItem
+from app.models import User, ComponentCatalogItem, EstatePictureType, MediaEntity, EventItem
 from app.helpers import normalize_exif_orientation
 from wowipy.wowipy import WowiPy, MediaData
 from app.erp import create_facility, create_component, edit_component, with_wowi_retry, WowiPermanentError
-
 
 logger = logging.getLogger()
 
@@ -42,7 +41,16 @@ def _is_permanent_http_error(exc) -> bool:
 
 def register_tasks(celery):
     @celery.task(bind=True, name="tasks.upload_use_unit_photo")
-    def upload_use_unit_photo(self, use_unit_id: int, stored_path: str):
+    def upload_use_unit_photo(self,
+                              use_unit_id: int,
+                              stored_path: str,
+                              picture_type: int,
+                              media_entity: int,
+                              description: str | None,
+                              user_id: int | None,
+                              ip_address: str | None,
+                              last_lat: str | None,
+                              last_lon: str | None):
         try:
             if not os.path.exists(stored_path):
                 raise FileNotFoundError(stored_path)
@@ -52,21 +60,81 @@ def register_tasks(celery):
             except Exception as e:
                 logger.warning(f"Could not normalize EXIF orientation for '{stored_path}': {str(e)}")
 
-            def _do(wowi: WowiPy, uu_id: int, media_path: str):
+            def _do(wowi: WowiPy,
+                    uu_id: int,
+                    media_path: str,
+                    pic_type: int,
+                    entity: int,
+                    desc: str,
+                    ):
+                ptype = db.session.get(EstatePictureType, pic_type)
+                if ptype:
+                    picture_type_name = ptype.name
+                else:
+                    logger.warning(f"task.upload_use_unit_photo: Using fallback picture type name 'Sonstiges'"
+                                   f" because picture type id '{pic_type}' does not exist.")
+                    picture_type_name = "Sonstiges"
+
+                ent = db.session.get(MediaEntity, entity)
+                if ent:
+                    entity_type_name = ent.name
+                else:
+                    logger.warning(f"task.upload_use_unit_phptp: Using fallback entity 'UseUnit'"
+                                   f" because entity id '{entity}' does not exist.")
+                    entity_type_name = "UseUnit"
+
+                if entity_type_name == "Building":
+                    try:
+                        the_uu = wowi.get_use_units(add_args={"useUnitId": uu_id})[0]
+                        entity_id = the_uu.building_land.id_
+                    except Exception as ex:
+                        logger.error(f"task.upload_use_unit_photo: Building context. Error while getting uu '{uu_id}':"
+                                     f"{str(ex)}")
+                        raise
+                else:
+                    entity_id = uu_id
                 wowi_file = MediaData(
                     file_name=os.path.basename(media_path),
                     creation_date_str=datetime.now().strftime("%y-%m-%d"),
-                    entity_type_name="UseUnit",
-                    entity_id=uu_id
+                    entity_type_name=entity_type_name,
+                    entity_id=entity_id,
+                    remark=desc
                 )
-                wowi_file.picture_type_name = "Sonstiges"
+                wowi_file.picture_type_name = picture_type_name
                 uplresult = wowi.upload_media(wowi_file, media_path)
                 if uplresult.status_code not in [200, 201]:
-                    logger.error(f"upload_media failed for use_unit_id={uu_id}: {uplresult.message}")
+                    logger.error(f"upload_media failed for entity_id{entity_id}: {uplresult.message}")
                     raise RuntimeError(f"upload_media failed: {uplresult.status_code}")
-                logger.info(f"upload_media ok for use_unit_id={uu_id}: {uplresult.message}")
+                logger.info(f"upload_media ok for entityid={entity_id}: {uplresult.message}")
 
-            with_wowi_retry(_do, uu_id=use_unit_id, media_path=stored_path)
+                user = None
+                if user_id is not None:
+                    user = db.session.get(User, int(user_id))
+                    if user:
+                        user.last_action = datetime.now()
+                        user.last_ip = ip_address
+                        user.last_lat = last_lat
+                        user.last_lon = last_lon
+                        db.session.commit()
+
+                new_event = EventItem(
+                    user_id=user_id,
+                    user_name=user.name,
+                    action="upl_photo",
+                    use_unit_id=entity_id,
+                    last_lat=last_lat,
+                    last_lon=last_lon,
+                    ip_address=ip_address
+                )
+                db.session.add(new_event)
+                db.session.commit()
+
+            with_wowi_retry(_do,
+                            uu_id=use_unit_id,
+                            media_path=stored_path,
+                            pic_type=picture_type,
+                            entity=media_entity,
+                            desc=description)
 
             try:
                 os.remove(stored_path)
@@ -80,13 +148,13 @@ def register_tasks(celery):
 
     @celery.task(bind=True, name="tasks.write_use_unit_data")
     def write_use_unit_data(
-        self,
-        use_unit_id: int,
-        payload: list[dict],
-        user_id: int | None,
-        ip_address: str | None,
-        last_lat: str | None,
-        last_lon: str | None,
+            self,
+            use_unit_id: int,
+            payload: list[dict],
+            user_id: int | None,
+            ip_address: str | None,
+            last_lat: str | None,
+            last_lon: str | None,
     ):
         try:
             def _do(wowi: WowiPy, uu_id: int):
