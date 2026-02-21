@@ -253,3 +253,11 @@ class FacilityItem(db.Model):
         "FacilityCatalogItem",
         back_populates="facilities",
     )
+
+
+class RawPayload(db.Model):
+    __tablename__ = "raw_payload"
+
+    id = db.Column(db.Integer, primary_key=True)
+    stamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    payload = db.Column(db.JSON)

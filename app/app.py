@@ -34,6 +34,13 @@ def create_app():
         graylog_port=config.getint('Logging', 'graylog_port', fallback=0),
     )
 
+    try:
+        if config.getboolean('Debug', 'store_payloads', fallback=False):
+            tapp.config["STORE_PAYLOADS"] = True
+    except Exception as e:
+        _ = e
+        pass
+
     if config.getboolean('Debug', 'demo_mode', fallback=False):
         tapp.config['DEMO_MODE'] = True
         tapp.config['DEMO_CUR_DATA'] = os.path.join(tapp.root_path, "demo_current_data.json")

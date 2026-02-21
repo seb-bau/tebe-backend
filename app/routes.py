@@ -9,7 +9,7 @@ from flask_jwt_extended import (
 from wowipy.wowipy import WowiPy, ComponentElement, LicenseAgreement
 import wowipy.models
 from app.models import (User, Role, TokenBlocklist, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem,
-                        Geolocation)
+                        Geolocation, RawPayload)
 from app.models import EventItem, FacilityItem
 from app.extensions import db
 from flask import current_app, send_file
@@ -741,10 +741,6 @@ def register_routes(app):
                     UnderComponentItem.id.in_(under_component_ids)
                 ).all()
 
-            if single_under_component and len(selected_under_components) > 1:
-                flash("Für dieses Merkmal darf nur eine Merkmalausprägung ausgewählt werden.", category="error")
-                return redirect(url_for("admin_components_edit", component_id=component.id))
-
             component.enabled = enabled
             component.custom_name = custom_name
             component.is_bool = is_bool
@@ -944,6 +940,11 @@ def register_routes(app):
         data = request.get_json(silent=True)
         if not isinstance(data, list):
             return jsonify({"msg": "invalid payload"}), 400
+
+        if current_app.config["STORE_PAYLOADS"]:
+            new_payload = RawPayload(payload=data)
+            db.session.add(new_payload)
+            db.session.commit()
 
         current_user_id = int(get_jwt_identity())
         ip_address = request.environ.get("REMOTE_ADDR")

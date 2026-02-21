@@ -105,32 +105,6 @@
         Die Zuordnung kann durch den ERP-Abgleich überschrieben werden.
     </div>
 </div>
-
-<script>
-    (function () {
-        const singleToggle = document.getElementById("single_under_component");
-        const select = document.getElementById("under_component_ids");
-
-        function applyMode() {
-            const single = singleToggle && singleToggle.checked;
-            if (single) {
-                select.removeAttribute("multiple");
-                select.size = 1;
-                const selected = Array.from(select.options).filter(o => o.selected);
-                selected.slice(1).forEach(o => o.selected = false);
-            } else {
-                select.setAttribute("multiple", "multiple");
-                select.size = 10;
-            }
-        }
-
-        if (singleToggle && select) {
-            singleToggle.addEventListener("change", applyMode);
-            select.addEventListener("change", applyMode);
-            applyMode();
-        }
-    })();
-</script>
         <div class="mb-4">
                 <label for="role_ids" class="form-label">Rollen</label>
                 <select class="form-select" id="role_ids" name="role_ids" multiple size="8">
