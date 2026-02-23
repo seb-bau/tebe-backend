@@ -68,10 +68,22 @@ def create_app():
 
     tapp.wsgi_app = ProxyFix(tapp.wsgi_app, x_proto=1, x_host=1)
 
-    from app.routes import register_routes
+    from app.routes_auth import register_routes_auth
+    from app.routes_web import register_routes_web
+    from app.routes_api_meta import register_routes_api_meta
+    from app.routes_api_media import register_routes_api_media
+    from app.routes_api_contacts import register_routes_api_contacts
+    from app.routes_api_inventory import register_routes_api_inventory
+    from app.routes_api_masterdata import register_routes_api_masterdata
     from app.cli import register_cli_commands
 
-    register_routes(tapp)
+    register_routes_auth(tapp)
+    register_routes_web(tapp)
+    register_routes_api_meta(tapp)
+    register_routes_api_media(tapp)
+    register_routes_api_contacts(tapp)
+    register_routes_api_inventory(tapp)
+    register_routes_api_masterdata(tapp)
     register_cli_commands(tapp)
 
     from app.models import User
