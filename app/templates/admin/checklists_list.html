@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Checklisten{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Checklisten</h1>
+    <a href="{{ url_for('admin_checklists_create') }}" class="btn btn-primary">
+        Neue Checkliste anlegen
+    </a>
+</div>
+
+<table class="table table-striped align-middle">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Items</th>
+            <th>Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in checklists %}
+        <tr>
+            <td>{{ c.id }}</td>
+            <td>{{ c.name }}</td>
+            <td class="text-muted">{{ c.check_list_items|length }}</td>
+            <td>
+                <a href="{{ url_for('admin_checklists_edit', checklist_id=c.id) }}"
+                   class="btn btn-sm btn-outline-secondary">
+                    Bearbeiten
+                </a>
+                <form action="{{ url_for('admin_checklists_delete', checklist_id=c.id) }}"
+                      method="post"
+                      class="d-inline"
+                      onsubmit="return confirm('Checkliste wirklich löschen? (Alle Items werden mit gelöscht)');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        Löschen
+                    </button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

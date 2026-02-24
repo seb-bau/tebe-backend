@@ -98,14 +98,41 @@ class TokenBlocklist(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
 
-class Geolocation(db.Model):
-    __tablename__ = "geolocation"
+class GeoBuilding(db.Model):
+    __tablename__ = "geobuilding"
 
     id = db.Column(db.Integer, primary_key=True)
-    building_id = db.Column(db.Integer, nullable=False)
-    building_idnum = db.Column(db.String(100), nullable=False)
+    erp_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
+    erp_idnum = db.Column(db.String(100), nullable=False)
+    erp_eco_unit_id = db.Column(db.Integer, nullable=True)
     lat = db.Column(db.String(50), nullable=False)
     lon = db.Column(db.String(50), nullable=False)
+
+
+class Department(db.Model):
+    __tablename__ = "department"
+
+    id = db.Column(db.Integer, primary_key=True)
+    idnum = db.Column(db.String(100), nullable=True)
+    name = db.Column(db.String(100), nullable=False)
+    visible = db.Column(db.Boolean, default=True)
+
+    def __repr__(self):
+        return f"Department '{self.name}' ({self.id})"
+
+
+class ResponsibleOfficial(db.Model):
+    __tablename__ = "responsible_official"
+
+    id = db.Column(db.Integer, primary_key=True)  # ERP-ID
+    short = db.Column(db.String(50), nullable=True)
+    erp_person_id = db.Column(db.Integer, nullable=False)
+    erp_user_id = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    visible = db.Column(db.Boolean, default=True)
+
+    def __repr__(self):
+        return f"ResponsibleOfficial '{self.name}' ({self.id})"
 
 
 class FacilityCatalogItem(db.Model):
@@ -276,3 +303,41 @@ class MediaEntity(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
+
+
+class CheckList(db.Model):
+    __tablename__ = "check_list"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+
+    check_list_items = db.relationship(
+        "CheckListItem",
+        back_populates="check_list",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="CheckListItem.position.asc(), CheckListItem.id.asc()",
+    )
+
+
+class CheckListItem(db.Model):
+    __tablename__ = "check_list_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    description = db.Column(db.String(255), nullable=False)
+    sub_description = db.Column(db.String(255), nullable=True)
+    ticket_subject = db.Column(db.String(255), nullable=True)
+    ticket_content = db.Column(db.Text, nullable=True)
+    dest_erp_user_id = db.Column(db.Integer, nullable=True)
+    dest_erp_department_id = db.Column(db.Integer, nullable=True)
+
+    check_list_id = db.Column(db.Integer, db.ForeignKey("check_list.id"), nullable=False)
+
+    check_list = db.relationship(
+        "CheckList",
+        back_populates="check_list_items",
+    )
+
+    def __repr__(self):
+        return f"CheckListItem {self.description}"

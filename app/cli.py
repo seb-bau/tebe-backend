@@ -2,7 +2,7 @@ import click
 from app.extensions import db
 from app.models import User
 from app.geo import update_geolocation, get_buildings_in_radius_m
-from app.erp import sync_erp_data
+from app.erp import sync_erp_data, sync_erp_department_data
 from app.entra_sync import sync_entra_users
 
 
@@ -58,7 +58,7 @@ def register_cli_commands(app):
 
     @app.cli.command("geo-update")
     def geo_update():
-        update_geolocation(False)
+        update_geolocation()
 
     @app.cli.command("test-geo-radius")
     @click.option("--lat", prompt=True)
@@ -76,7 +76,11 @@ def register_cli_commands(app):
     @app.cli.command("sync-erp")
     def cli_sync_erp():
         results = sync_erp_data()
+        click.echo(f"Result: {results}")
 
+    @app.cli.command("sync-erp-departments")
+    def cli_sync_erp_departments():
+        results = sync_erp_department_data()
         click.echo(f"Result: {results}")
 
     @app.cli.command("sync-entra-users")

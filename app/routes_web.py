@@ -1,6 +1,6 @@
 from flask import render_template, request, flash, abort, redirect, url_for
 from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem
-from app.models import EventItem
+from app.models import EventItem, Department, ResponsibleOfficial, CheckList, CheckListItem
 from app.extensions import db
 from flask import current_app
 from flask_login import login_required, current_user
@@ -137,6 +137,273 @@ def register_routes_web(app):
             top_users_rows=top_users_rows,
             recent_changes=recent_changes,
         )
+
+    # ---------------------------------------------------------
+    # Departments (Abteilungen) – nur visibility änderbar
+    # ---------------------------------------------------------
+    @app.route("/admin/departments")
+    @admin_required
+    def admin_departments_list():
+        departments = Department.query.order_by(Department.name.asc(), Department.id.asc()).all()
+        return render_template("admin/departments_list.html", departments=departments)
+
+    @app.route("/admin/departments/<int:department_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_departments_edit(department_id):
+        department = Department.query.get_or_404(department_id)
+
+        if request.method == "POST":
+            # Nur visible darf geändert werden
+            department.visible = bool(request.form.get("visible"))
+            db.session.commit()
+            flash("Abteilung wurde aktualisiert.", "success")
+            return redirect(url_for("admin_departments_list"))
+
+        return render_template("admin/department_form.html", department=department)
+
+    # ---------------------------------------------------------
+    # ResponsibleOfficial (Ansprechpartner) – nur visibility änderbar
+    # ---------------------------------------------------------
+    @app.route("/admin/officials")
+    @admin_required
+    def admin_officials_list():
+        officials = ResponsibleOfficial.query.order_by(ResponsibleOfficial.name.asc(),
+                                                       ResponsibleOfficial.id.asc()).all()
+        return render_template("admin/officials_list.html", officials=officials)
+
+    @app.route("/admin/officials/<int:official_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_officials_edit(official_id):
+        official = ResponsibleOfficial.query.get_or_404(official_id)
+
+        if request.method == "POST":
+            # Nur visible darf geändert werden
+            official.visible = bool(request.form.get("visible"))
+            db.session.commit()
+            flash("Ansprechpartner wurde aktualisiert.", "success")
+            return redirect(url_for("admin_officials_list"))
+
+        return render_template("admin/official_form.html", official=official)
+
+    # ---------------------------------------------------------
+    # Checklisten
+    # ---------------------------------------------------------
+    @app.route("/admin/checklists")
+    @admin_required
+    def admin_checklists_list():
+        checklists = CheckList.query.order_by(CheckList.name.asc(), CheckList.id.asc()).all()
+        return render_template("admin/checklists_list.html", checklists=checklists)
+
+    @app.route("/admin/checklists/create", methods=["GET", "POST"])
+    @admin_required
+    def admin_checklists_create():
+        if request.method == "POST":
+            name = (request.form.get("name") or "").strip()
+            if not name:
+                flash("Name ist ein Pflichtfeld.", "danger")
+                return redirect(url_for("admin_checklists_create"))
+
+            cl = CheckList(name=name)
+            db.session.add(cl)
+            db.session.commit()
+            flash("Checkliste wurde erstellt.", "success")
+            return redirect(url_for("admin_checklists_edit", checklist_id=cl.id))
+
+        return render_template("admin/checklist_form.html", checklist=None)
+
+    @app.route("/admin/checklists/<int:checklist_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_checklists_edit(checklist_id):
+        checklist = CheckList.query.get_or_404(checklist_id)
+
+        # Checklisten-Name speichern (oben im gleichen Screen)
+        if request.method == "POST" and request.form.get("_form") == "checklist":
+            name = (request.form.get("name") or "").strip()
+            if not name:
+                flash("Name ist ein Pflichtfeld.", "danger")
+                return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+            checklist.name = name
+            db.session.commit()
+            flash("Checkliste wurde aktualisiert.", "success")
+            return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+        departments = Department.query.filter_by(visible=True).order_by(Department.name.asc()).all()
+        officials = ResponsibleOfficial.query.filter_by(visible=True).order_by(ResponsibleOfficial.name.asc()).all()
+        return render_template(
+            "admin/checklist_form.html",
+            checklist=checklist,
+            departments=departments,
+            officials=officials,
+        )
+
+    @app.route("/admin/checklists/<int:checklist_id>/delete", methods=["POST"])
+    @admin_required
+    def admin_checklists_delete(checklist_id):
+        checklist = CheckList.query.get_or_404(checklist_id)
+        db.session.delete(checklist)
+        db.session.commit()
+        flash("Checkliste wurde gelöscht.", "info")
+        return redirect(url_for("admin_checklists_list"))
+
+    # -------------------------
+    # CheckListItems (nur innerhalb der Checklisten-Edit-Ansicht)
+    # -------------------------
+    @app.route("/admin/checklists/<int:checklist_id>/items/create", methods=["POST"])
+    @admin_required
+    def admin_checklist_items_create(checklist_id):
+        checklist = CheckList.query.get_or_404(checklist_id)
+
+        description = (request.form.get("description") or "").strip()
+        sub_description = (request.form.get("sub_description") or "").strip() or None
+        ticket_subject = (request.form.get("ticket_subject") or "").strip() or None
+        ticket_content = (request.form.get("ticket_content") or "").strip() or None
+        dest_erp_user_id = request.form.get("dest_erp_user_id", type=int)
+        dest_erp_department_id = request.form.get("dest_erp_department_id", type=int)
+
+        if dest_erp_user_id:
+            if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
+                dest_erp_user_id = None
+
+        if dest_erp_department_id:
+            if not Department.query.filter_by(id=dest_erp_department_id, visible=True).first():
+                dest_erp_department_id = None
+
+        if not description:
+            flash("Beschreibung ist ein Pflichtfeld.", "danger")
+            return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+        max_pos = (
+            db.session.query(func.max(CheckListItem.position))
+            .filter(CheckListItem.check_list_id == checklist.id)
+            .scalar()
+        )
+        next_pos = (max_pos or 0) + 10
+
+        item = CheckListItem(
+            position=next_pos,
+            description=description,
+            sub_description=sub_description,
+            ticket_subject=ticket_subject,
+            ticket_content=ticket_content,
+            dest_erp_user_id=dest_erp_user_id,
+            dest_erp_department_id=dest_erp_department_id,
+            check_list_id=checklist.id,
+        )
+
+        db.session.add(item)
+        db.session.commit()
+        flash("Checklisten-Item wurde angelegt.", "success")
+        return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+    @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/edit", methods=["POST"])
+    @admin_required
+    def admin_checklist_items_edit(checklist_id, item_id):
+        checklist = CheckList.query.get_or_404(checklist_id)
+        item = CheckListItem.query.get_or_404(item_id)
+
+        if item.check_list_id != checklist.id:
+            abort(404)
+
+        description = (request.form.get("description") or "").strip()
+        sub_description = (request.form.get("sub_description") or "").strip() or None
+        ticket_subject = (request.form.get("ticket_subject") or "").strip() or None
+        ticket_content = (request.form.get("ticket_content") or "").strip() or None
+        dest_erp_user_id = request.form.get("dest_erp_user_id", type=int)
+        dest_erp_department_id = request.form.get("dest_erp_department_id", type=int)
+
+        if dest_erp_user_id:
+            if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
+                dest_erp_user_id = None
+
+        if dest_erp_department_id:
+            if not Department.query.filter_by(id=dest_erp_department_id, visible=True).first():
+                dest_erp_department_id = None
+
+        if not description:
+            flash("Beschreibung ist ein Pflichtfeld.", "danger")
+            return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+        item.description = description
+        item.sub_description = sub_description
+        item.ticket_subject = ticket_subject
+        item.ticket_content = ticket_content
+        item.dest_erp_user_id = dest_erp_user_id
+        item.dest_erp_department_id = dest_erp_department_id
+
+        db.session.commit()
+        flash("Checklisten-Item wurde aktualisiert.", "success")
+        return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+    @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/delete", methods=["POST"])
+    @admin_required
+    def admin_checklist_items_delete(checklist_id, item_id):
+        checklist = CheckList.query.get_or_404(checklist_id)
+        item = CheckListItem.query.get_or_404(item_id)
+
+        if item.check_list_id != checklist.id:
+            abort(404)
+
+        db.session.delete(item)
+        db.session.commit()
+        flash("Checklisten-Item wurde gelöscht.", "info")
+        return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+    @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/move-up", methods=["POST"])
+    @admin_required
+    def admin_checklist_items_move_up(checklist_id, item_id):
+        checklist = CheckList.query.get_or_404(checklist_id)
+        item = CheckListItem.query.get_or_404(item_id)
+        if item.check_list_id != checklist.id:
+            abort(404)
+
+        prev_item = (
+            CheckListItem.query
+            .filter(CheckListItem.check_list_id == checklist.id)
+            .filter(
+                (CheckListItem.position < item.position) |
+                ((CheckListItem.position == item.position) & (CheckListItem.id < item.id))
+            )
+            .order_by(CheckListItem.position.desc(), CheckListItem.id.desc())
+            .first()
+        )
+
+        if not prev_item:
+            flash("Item ist bereits ganz oben.", "info")
+            return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+        item.position, prev_item.position = prev_item.position, item.position
+        db.session.commit()
+        flash("Item wurde nach oben verschoben.", "success")
+        return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+    @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/move-down", methods=["POST"])
+    @admin_required
+    def admin_checklist_items_move_down(checklist_id, item_id):
+        checklist = CheckList.query.get_or_404(checklist_id)
+        item = CheckListItem.query.get_or_404(item_id)
+        if item.check_list_id != checklist.id:
+            abort(404)
+
+        next_item = (
+            CheckListItem.query
+            .filter(CheckListItem.check_list_id == checklist.id)
+            .filter(
+                (CheckListItem.position > item.position) |
+                ((CheckListItem.position == item.position) & (CheckListItem.id > item.id))
+            )
+            .order_by(CheckListItem.position.asc(), CheckListItem.id.asc())
+            .first()
+        )
+
+        if not next_item:
+            flash("Item ist bereits ganz unten.", "info")
+            return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
+
+        item.position, next_item.position = next_item.position, item.position
+        db.session.commit()
+        flash("Item wurde nach unten verschoben.", "success")
+        return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
     # User-Liste
     @app.route("/admin/users")

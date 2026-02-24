@@ -59,15 +59,15 @@ def register_routes_api_media(app):
 
         photo.save(stored_path)
 
-        celery.send_task("tasks.upload_use_unit_photo", args=[use_unit_id,
-                                                              stored_path,
-                                                              picture_type,
-                                                              media_entity,
-                                                              description,
-                                                              current_user_id,
-                                                              ip_address,
-                                                              last_lat,
-                                                              last_lon])
+        celery.send_task("tasks.upload_erp_photo", args=[use_unit_id,
+                                                         stored_path,
+                                                         picture_type,
+                                                         media_entity,
+                                                         description,
+                                                         current_user_id,
+                                                         ip_address,
+                                                         last_lat,
+                                                         last_lon])
 
         return jsonify({"status": "ok", "use_unit_id": use_unit_id, "filename": stored_name}), 201
 
@@ -86,5 +86,6 @@ def register_routes_api_media(app):
                         wowi.download_media("UseUnit", entry.file_guid, tmpdir, entry.file_name)
                         return send_file(file_path, download_name=entry.file_name)
             return abort(404)
+
         oretval = with_wowi_retry(_do_app_uu_floor_plan, uu_id=use_unit_id)
         return oretval

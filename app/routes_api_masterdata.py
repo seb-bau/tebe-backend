@@ -1,6 +1,6 @@
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import User, Geolocation
+from app.models import User, GeoBuilding
 from app.extensions import db
 from flask import current_app
 from sqlalchemy import or_, inspect
@@ -147,8 +147,8 @@ def register_routes_api_masterdata(app):
                     "location": uu.description_of_position,
                     "contract": contract_info
                 })
-                location: Geolocation
-            location = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
+                location: GeoBuilding
+            location = db.session.query(GeoBuilding).filter(GeoBuilding.erp_id == building.internal_id).first()
             if location:
                 loc_lat = location.lat
                 loc_lon = location.lon

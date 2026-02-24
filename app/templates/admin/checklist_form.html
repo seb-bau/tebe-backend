@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% if checklist %}
+    {% set page_title = "Checkliste bearbeiten" %}
+{% else %}
+    {% set page_title = "Checkliste anlegen" %}
+{% endif %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">{{ page_title }}</h1>
+    <a href="{{ url_for('admin_checklists_list') }}" class="btn btn-outline-secondary">
+        Zurück zur Liste
+    </a>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <form method="post" class="flex-grow-1" style="min-width: 320px;">
+        <input type="hidden" name="_form" value="checklist">
+        <label for="name" class="form-label">Name</label>
+        <input type="text" class="form-control" id="name" name="name" required
+               value="{{ checklist.name if checklist else '' }}">
+        <button type="submit" class="btn btn-primary mt-3">Speichern</button>
+        {% if checklist %}
+          <span class="ms-2 text-muted small">ID: {{ checklist.id }}</span>
+        {% endif %}
+      </form>
+
+      {% if checklist %}
+        <form action="{{ url_for('admin_checklists_delete', checklist_id=checklist.id) }}"
+              method="post"
+              onsubmit="return confirm('Checkliste wirklich löschen? (Alle Items werden mit gelöscht)');">
+          <button type="submit" class="btn btn-outline-danger">
+            Checkliste löschen
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if checklist %}
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="h5 mb-0">Items</h2>
+    </div>
+
+    <!-- Neues Item -->
+    <div class="card mb-4">
+        <div class="card-header">Neues Item anlegen</div>
+        <div class="card-body">
+            <form method="post" action="{{ url_for('admin_checklist_items_create', checklist_id=checklist.id) }}">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="description_new">Beschreibung *</label>
+                        <input class="form-control" id="description_new" name="description" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="sub_description_new">Unterbeschreibung</label>
+                        <input class="form-control" id="sub_description_new" name="sub_description">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label" for="ticket_subject_new">Ticket Betreff</label>
+                        <input class="form-control" id="ticket_subject_new" name="ticket_subject">
+                    </div>
+<div class="col-md-6">
+    <label class="form-label" for="dest_erp_user_id_new">Ziel Ansprechpartner</label>
+    <select class="form-select" id="dest_erp_user_id_new" name="dest_erp_user_id">
+        <option value="">-- Kein Ansprechpartner --</option>
+        {% for o in officials %}
+            <option value="{{ o.erp_user_id }}">
+                {{ o.name }}{% if o.short %} ({{ o.short }}){% endif %}
+            </option>
+        {% endfor %}
+    </select>
+</div>
+
+<div class="col-md-6">
+    <label class="form-label" for="dest_erp_department_id_new">Ziel Abteilung</label>
+    <select class="form-select" id="dest_erp_department_id_new" name="dest_erp_department_id">
+        <option value="">-- Keine Abteilung --</option>
+        {% for d in departments %}
+            <option value="{{ d.id }}">
+                {{ d.name }}
+            </option>
+        {% endfor %}
+    </select>
+</div>
+
+                    <div class="col-12">
+                        <label class="form-label" for="ticket_content_new">Ticket Inhalt</label>
+                        <textarea class="form-control" id="ticket_content_new" name="ticket_content" rows="4"></textarea>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary mt-3">Item anlegen</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Bestehende Items -->
+    <div class="accordion" id="itemsAccordion">
+        {% for item in checklist.check_list_items %}
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading{{ item.id }}">
+                    <button class="accordion-button collapsed" type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#collapse{{ item.id }}"
+                            aria-expanded="false"
+                            aria-controls="collapse{{ item.id }}">
+                        #{{ item.id }} – {{ item.description }}
+                    </button>
+                </h2>
+
+                <div id="collapse{{ item.id }}" class="accordion-collapse collapse"
+                     aria-labelledby="heading{{ item.id }}"
+                     data-bs-parent="#itemsAccordion">
+                    <div class="accordion-body">
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <!-- Update-Form -->
+                                <form method="post"
+                                      action="{{ url_for('admin_checklist_items_edit', checklist_id=checklist.id, item_id=item.id) }}"
+                                      class="card">
+                                    <div class="card-body">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="description_{{ item.id }}">Beschreibung *</label>
+                                                <input class="form-control" id="description_{{ item.id }}" name="description"
+                                                       required value="{{ item.description }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="sub_description_{{ item.id }}">Unterbeschreibung</label>
+                                                <input class="form-control" id="sub_description_{{ item.id }}" name="sub_description"
+                                                       value="{{ item.sub_description or '' }}">
+                                            </div>
+
+                                            <div class="col-md-6">
+                                                <label class="form-label" for="ticket_subject_{{ item.id }}">Ticket Betreff</label>
+                                                <input class="form-control" id="ticket_subject_{{ item.id }}" name="ticket_subject"
+                                                       value="{{ item.ticket_subject or '' }}">
+                                            </div>
+                                          <div class="col-md-6">
+                                            <label class="form-label" for="dest_erp_user_id_{{ item.id }}">Ziel Ansprechpartner</label>
+                                            <select class="form-select"
+                                                    id="dest_erp_user_id_{{ item.id }}"
+                                                    name="dest_erp_user_id">
+                                                <option value="">-- Kein Ansprechpartner --</option>
+                                                {% for o in officials %}
+                                                    <option value="{{ o.erp_user_id }}"
+                                                        {% if item.dest_erp_user_id == o.erp_user_id %}selected{% endif %}>
+                                                        {{ o.name }}{% if o.short %} ({{ o.short }}){% endif %}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <label class="form-label" for="dest_erp_department_id_{{ item.id }}">Ziel Abteilung</label>
+                                            <select class="form-select"
+                                                    id="dest_erp_department_id_{{ item.id }}"
+                                                    name="dest_erp_department_id">
+                                                <option value="">-- Keine Abteilung --</option>
+                                                {% for d in departments %}
+                                                    <option value="{{ d.id }}"
+                                                        {% if item.dest_erp_department_id == d.id %}selected{% endif %}>
+                                                        {{ d.name }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+
+                                            <div class="col-12">
+                                                <label class="form-label" for="ticket_content_{{ item.id }}">Ticket Inhalt</label>
+                                                <textarea class="form-control" id="ticket_content_{{ item.id }}" name="ticket_content" rows="4">{{ item.ticket_content or '' }}</textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="card-footer d-flex flex-wrap gap-2">
+                                        <button type="submit" class="btn btn-primary">Änderungen speichern</button>
+
+                                        <form method="post"
+                                              action="{{ url_for('admin_checklist_items_move_up', checklist_id=checklist.id, item_id=item.id) }}">
+                                            <button type="submit" class="btn btn-outline-secondary">↑</button>
+                                        </form>
+
+                                        <form method="post"
+                                              action="{{ url_for('admin_checklist_items_move_down', checklist_id=checklist.id, item_id=item.id) }}">
+                                            <button type="submit" class="btn btn-outline-secondary">↓</button>
+                                        </form>
+
+                                        <span class="text-muted small align-self-center ms-auto">
+                                            Pos: {{ item.position }} · ID: {{ item.id }}
+                                        </span>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <div class="col-12">
+                                <!-- Delete-Form separat (kein nesting!) -->
+                                <form action="{{ url_for('admin_checklist_items_delete', checklist_id=checklist.id, item_id=item.id) }}"
+                                      method="post"
+                                      onsubmit="return confirm('Item wirklich löschen?');">
+                                    <button type="submit" class="btn btn-outline-danger">
+                                        Item löschen
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-info">Noch keine Items vorhanden.</div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        Lege zuerst die Checkliste an, danach kannst du Items hinzufügen.
+    </div>
+{% endif %}
+
+{% endblock %}

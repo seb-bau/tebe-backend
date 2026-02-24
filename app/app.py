@@ -75,6 +75,7 @@ def create_app():
     from app.routes_api_contacts import register_routes_api_contacts
     from app.routes_api_inventory import register_routes_api_inventory
     from app.routes_api_masterdata import register_routes_api_masterdata
+    from app.routes_api_ticket import register_routes_api_ticket
     from app.cli import register_cli_commands
 
     register_routes_auth(tapp)
@@ -84,6 +85,7 @@ def create_app():
     register_routes_api_contacts(tapp)
     register_routes_api_inventory(tapp)
     register_routes_api_masterdata(tapp)
+    register_routes_api_ticket(tapp)
     register_cli_commands(tapp)
 
     from app.models import User

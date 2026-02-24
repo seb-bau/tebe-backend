@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Ansprechpartner{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Ansprechpartner</h1>
+</div>
+
+<table class="table table-striped align-middle">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Short</th>
+            <th>Name</th>
+            <th>ERP Person</th>
+            <th>ERP User</th>
+            <th>Sichtbar</th>
+            <th>Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for o in officials %}
+        <tr>
+            <td>{{ o.id }}</td>
+            <td class="text-muted">{{ o.short or "-" }}</td>
+            <td>{{ o.name }}</td>
+            <td class="text-muted">{{ o.erp_person_id }}</td>
+            <td class="text-muted">{{ o.erp_user_id }}</td>
+            <td>
+                {% if o.visible %}
+                    <span class="badge text-bg-success">Ja</span>
+                {% else %}
+                    <span class="badge text-bg-secondary">Nein</span>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{{ url_for('admin_officials_edit', official_id=o.id) }}"
+                   class="btn btn-sm btn-outline-secondary">
+                    Sichtbarkeit ändern
+                </a>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

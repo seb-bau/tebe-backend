@@ -1,4 +1,4 @@
-from app.models import Geolocation
+from app.models import GeoBuilding
 from wowicache.models import WowiCache, Building
 from flask import current_app
 from app.extensions import db
@@ -37,7 +37,7 @@ def get_buildings_in_radius_m(center_lat, center_lon, radius_m):
     center_lat = float(center_lat)
     center_lon = float(center_lon)
 
-    geolocations = Geolocation.query.all()
+    geolocations = GeoBuilding.query.all()
     result = []
 
     for geo in geolocations:
@@ -49,8 +49,8 @@ def get_buildings_in_radius_m(center_lat, center_lon, radius_m):
         if distance_m <= radius_m:
             item = {
                 "id": geo.id,
-                "building_id": geo.building_id,
-                "building_idnum": geo.building_idnum,
+                "building_id": geo.erp_id,
+                "building_idnum": geo.erp_idnum,
                 "lat": geo.lat,
                 "lon": geo.lon,
                 "distance_m": round(distance_m, 1)
@@ -92,7 +92,7 @@ def geocode_address(address: str, api_key: str) -> tuple[str, str] | tuple[None,
     return None, None
 
 
-def update_geolocation(force_update: bool = False):
+def update_geolocation():
     logger.debug("update_geolocation start")
     with current_app.app_context():
         cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
@@ -108,6 +108,7 @@ def update_geolocation(force_update: bool = False):
         last_reported = 0
         for building in buildings:
             building_counter += 1
+            print(building_counter)
             progress = building_counter // buildings_total
             if progress % 10 == 0 and progress != last_reported:
                 last_reported = progress
@@ -115,26 +116,37 @@ def update_geolocation(force_update: bool = False):
                 logger.debug(f"update_geolocation progress: {progress} %")
             if building.building_type_name != "Mehrfamilienhaus":
                 continue
-            if not force_update:
-                existing = db.session.query(Geolocation).filter(Geolocation.building_id == building.internal_id).first()
-                if existing:
-                    continue
+            existing: GeoBuilding
+            existing = db.session.query(GeoBuilding).filter(GeoBuilding.erp_id == building.internal_id).first()
 
             building_address = f"{building.street_complete} {building.postcode}  {building.town}"
-            lat, lon = geocode_address(building_address, geo_api_key)
-            if not lat:
-                print(f"No Geolocation for {building_address}")
-                continue
-            # print(f"{building_address} --> {lat}, {lon}")
-
-            new_geo = Geolocation(
-                building_id=building.internal_id,
-                building_idnum=building.id_num,
-                lat=lat,
-                lon=lon
-            )
-            update_counter += 1
-            db.session.add(new_geo)
+            if existing:
+                if existing.lat is None or existing.lon is None:
+                    lat, lon = geocode_address(building_address, geo_api_key)
+                    if not lat:
+                        print(f"No Geolocation for {building_address}")
+                        continue
+                else:
+                    lat = existing.lat
+                    lon = existing.lon
+                existing.erp_idnum = building.id_num
+                existing.erp_eco_unit_id = building.economic_unit_id
+                existing.lat = lat
+                existing.lon = lon
+            else:
+                lat, lon = geocode_address(building_address, geo_api_key)
+                if not lat:
+                    print(f"No Geolocation for {building_address}")
+                    continue
+                new_geo = GeoBuilding(
+                    erp_id=building.internal_id,
+                    erp_idnum=building.id_num,
+                    erp_eco_unit_id=building.economic_unit_id,
+                    lat=lat,
+                    lon=lon
+                )
+                update_counter += 1
+                db.session.add(new_geo)
             db.session.commit()
         success_message = f"update_geolocation finished. Total buildings: {buildings_total}. Updated: {update_counter}"
         logger.info(success_message)

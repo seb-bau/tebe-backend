@@ -1,3 +1,4 @@
+import wowipy.models
 from wowipy.wowipy import WowiPy, Result
 from wowipy.models import (FacilityCatalogElement, ComponentCatalogElement, UnderComponentCatalogElement,
                            FacilityElement)
@@ -5,10 +6,11 @@ from flask import current_app
 import logging
 from app.extensions import db
 from app.models import (FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem,
-                        EstatePictureType, MediaEntity)
+                        EstatePictureType, MediaEntity, Department, ResponsibleOfficial)
 from threading import Lock
 from datetime import datetime
 import re
+from wowicache.models import WowiCache, UseUnit
 
 logger = logging.getLogger()
 
@@ -306,6 +308,77 @@ def sync_media_entities(wowi: WowiPy):
     db.session.commit()
 
 
+def sync_departments(wowi: WowiPy):
+    def update_dep(pdep: wowipy.models.Department):
+        find_dep = db.session.get(Department, pdep.id_)
+        if find_dep:
+            find_dep.name = pdep.name
+            find_dep.idnum = pdep.id_num
+        else:
+            new_dep = Department(
+                id=pdep.id_,
+                idnum=pdep.id_num,
+                name=pdep.name,
+                visible=True
+            )
+            db.session.add(new_dep)
+            find_dep = new_dep
+        return find_dep
+
+    def update_resp(presp: wowipy.models.ResponsibleOfficial):
+        wowi_resp = wowi.get_responsible_officials(person_id=presp.person_id)[0]
+        find_resp = db.session.get(ResponsibleOfficial, wowi_resp.id_)
+        if find_resp:
+            find_resp.name = (f"{wowi_resp.person.natural_person.last_name}, "
+                              f"{wowi_resp.person.natural_person.first_name}")
+            find_resp.short = wowi_resp.code_short
+            find_resp.erp_person_id = wowi_resp.person_id
+            find_resp.erp_user_id = wowi_resp.user_id
+        else:
+            new_resp = ResponsibleOfficial(
+                id=wowi_resp.id_,
+                name=(f"{wowi_resp.person.natural_person.last_name}, "
+                      f"{wowi_resp.person.natural_person.first_name}"),
+                short=wowi_resp.code_short,
+                erp_person_id=wowi_resp.person_id,
+                erp_user_id=wowi_resp.user_id,
+                visible=True
+            )
+            db.session.add(new_resp)
+            find_resp = new_resp
+        return find_resp
+
+    deps = wowi.get_departments()
+
+    dep_ids = set()
+    resp_ids_global = set()
+
+    for tdep in deps:
+        dep_ids.add(tdep.id_)
+        update_dep(tdep)
+
+        for tresp in tdep.responsible_officials:
+            if tresp.id_ not in resp_ids_global:
+                resp_ids_global.add(tresp.id_)
+                update_resp(tresp)
+
+    # delete officials not in ERP anymore
+    for off in db.session.query(ResponsibleOfficial).all():
+        if off.id not in resp_ids_global:
+            db.session.delete(off)
+
+    # delete departments not in ERP anymore
+    for dep in db.session.query(Department).all():
+        if dep.id not in dep_ids:
+            db.session.delete(dep)
+
+    db.session.commit()
+
+    retmsg = f"sync_departments finished"
+    print(retmsg)
+    logger.info(retmsg)
+
+
 def sync_erp_data():
     wowi = get_wowi_client()
     sync_facility_catalog(wowi)
@@ -314,6 +387,12 @@ def sync_erp_data():
     sync_under_component_catalog(wowi)
     sync_estate_picture_types(wowi)
     sync_media_entities(wowi)
+    sync_departments(wowi)
+
+
+def sync_erp_department_data():
+    wowi = get_wowi_client()
+    sync_departments(wowi)
 
 
 def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) -> int:
@@ -343,17 +422,17 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
 
 
 def create_component(
-    wowi: WowiPy,
-    component_catalog_id: int,
-    facility_id: int,
-    count: int,
-    puser: User,
-    puu_id: int,
-    psub_components: list[int] = None,
-    comment: str = None,
-    ip_address: str | None = None,
-    last_lat: str | None = None,
-    last_lon: str | None = None,
+        wowi: WowiPy,
+        component_catalog_id: int,
+        facility_id: int,
+        count: int,
+        puser: User,
+        puu_id: int,
+        psub_components: list[int] = None,
+        comment: str = None,
+        ip_address: str | None = None,
+        last_lat: str | None = None,
+        last_lon: str | None = None,
 ) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
@@ -411,16 +490,16 @@ def create_component(
 
 
 def edit_component(
-    wowi: WowiPy,
-    component_id: int,
-    count: int,
-    psub_components: list[int] = None,
-    unknown: bool = False,
-    comment: str = None,
-    puser: User | None = None,
-    ip_address: str | None = None,
-    last_lat: str | None = None,
-    last_lon: str | None = None,
+        wowi: WowiPy,
+        component_id: int,
+        count: int,
+        psub_components: list[int] = None,
+        unknown: bool = False,
+        comment: str = None,
+        puser: User | None = None,
+        ip_address: str | None = None,
+        last_lat: str | None = None,
+        last_lon: str | None = None,
 ) -> int | None:
     config = current_app.config["INI_CONFIG"]
     dest_component_status = config.get("Handling", "component_status")
@@ -515,3 +594,26 @@ def edit_component(
         db.session.add(new_event)
     db.session.commit()
     return cr_f_result.data["Id"]
+
+
+def get_responsible_official(wowi: WowiPy, use_unit_id: int, department_id: int) -> ResponsibleOfficial | None:
+    cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
+    cache_uu = cache.session.get(UseUnit, use_unit_id)
+    if not cache_uu:
+        logger.error(f"get_responsible_official: UseUnit '{use_unit_id}' not found in cache")
+        return None
+    eco_unit_id = cache_uu.economic_unit_id
+    eco_unit_jur = wowi.get_economic_unit_jurisdictions(economic_unit_id=eco_unit_id)
+    if not eco_unit_jur:
+        logger.error(f"get_responsible_official: No jurisdiction entry for eco unit '{eco_unit_id}'")
+        return None
+    for entry in eco_unit_jur[0].economic_unit_jurisdiction_list:
+        if entry.department_id == department_id:
+            resp_id = entry.responsible_official.id_
+            tresp = db.session.get(ResponsibleOfficial, resp_id)
+            if not tresp:
+                logger.error(f"get_responsible_official: Cannot find official '{resp_id}' in local db")
+                return None
+            return tresp
+    logger.error(f"get_responsible_official: No entry for eco-unit '{eco_unit_id}' department '{department_id}'")
+    return None

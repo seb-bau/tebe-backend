@@ -5,7 +5,7 @@ import re
 from app.extensions import db
 from app.models import User, ComponentCatalogItem, EstatePictureType, MediaEntity, EventItem
 from app.helpers import normalize_exif_orientation
-from wowipy.wowipy import WowiPy, MediaData
+from wowipy.wowipy import WowiPy, MediaData, FileData
 from app.erp import create_facility, create_component, edit_component, with_wowi_retry, WowiPermanentError
 
 logger = logging.getLogger()
@@ -40,17 +40,17 @@ def _is_permanent_http_error(exc) -> bool:
 
 
 def register_tasks(celery):
-    @celery.task(bind=True, name="tasks.upload_use_unit_photo")
-    def upload_use_unit_photo(self,
-                              use_unit_id: int,
-                              stored_path: str,
-                              picture_type: int,
-                              media_entity: int,
-                              description: str | None,
-                              user_id: int | None,
-                              ip_address: str | None,
-                              last_lat: str | None,
-                              last_lon: str | None):
+    @celery.task(bind=True, name="tasks.upload_erp_photo")
+    def upload_erp_photo(self,
+                         use_unit_id: int,
+                         stored_path: str,
+                         picture_type: int,
+                         media_entity: int,
+                         description: str | None,
+                         user_id: int | None,
+                         ip_address: str | None,
+                         last_lat: str | None,
+                         last_lon: str | None):
         try:
             if not os.path.exists(stored_path):
                 raise FileNotFoundError(stored_path)
@@ -71,7 +71,7 @@ def register_tasks(celery):
                 if ptype:
                     picture_type_name = ptype.name
                 else:
-                    logger.warning(f"task.upload_use_unit_photo: Using fallback picture type name 'Sonstiges'"
+                    logger.warning(f"task.upload_erp_photo: Using fallback picture type name 'Sonstiges'"
                                    f" because picture type id '{pic_type}' does not exist.")
                     picture_type_name = "Sonstiges"
 
@@ -79,7 +79,7 @@ def register_tasks(celery):
                 if ent:
                     entity_type_name = ent.name
                 else:
-                    logger.warning(f"task.upload_use_unit_phptp: Using fallback entity 'UseUnit'"
+                    logger.warning(f"task.upload_erp_photo: Using fallback entity 'UseUnit'"
                                    f" because entity id '{entity}' does not exist.")
                     entity_type_name = "UseUnit"
 
@@ -88,7 +88,7 @@ def register_tasks(celery):
                         the_uu = wowi.get_use_units(add_args={"useUnitId": uu_id})[0]
                         entity_id = the_uu.building_land.id_
                     except Exception as ex:
-                        logger.error(f"task.upload_use_unit_photo: Building context. Error while getting uu '{uu_id}':"
+                        logger.error(f"task.upload_erp_photo: Building context. Error while getting uu '{uu_id}':"
                                      f"{str(ex)}")
                         raise
                 else:
@@ -143,7 +143,76 @@ def register_tasks(celery):
 
             return {"status": "ok"}
         except Exception as e:
-            logger.error(f"Task upload_use_unit_photo failed for use_unit_id={use_unit_id}: {str(e)}")
+            logger.error(f"Task upload_erp_photo failed for use_unit_id={use_unit_id}: {str(e)}")
+            raise self.retry(exc=e, countdown=5, max_retries=5)
+
+    @celery.task(bind=True, name="tasks.upload_erp_file")
+    def upload_erp_file(self,
+                        ticket_id: int,
+                        stored_path: str,
+                        user_id: int | None,
+                        ip_address: str | None,
+                        last_lat: str | None,
+                        last_lon: str | None):
+        try:
+            if not os.path.exists(stored_path):
+                raise FileNotFoundError(stored_path)
+
+            try:
+                normalize_exif_orientation(stored_path)
+            except Exception as e:
+                logger.warning(f"Could not normalize EXIF orientation for '{stored_path}': {str(e)}")
+
+            def _do(wowi: WowiPy,
+                    tick_id: int,
+                    file_path: str,
+                    ):
+
+                wowi_file = FileData(
+                    file_name=os.path.basename(file_path),
+                    creation_date_str=datetime.now().strftime("%y-%m-%d"),
+                    entity_type_name="Ticket",
+                    file_type_name="Nachrichten-Anhang",
+                    entity_id=tick_id
+                )
+                uplresult = wowi.upload_file(wowi_file, file_path)
+                if uplresult.status_code not in [200, 201]:
+                    logger.error(f"upload_erp_file failed for ticket_id {tick_id}: {uplresult.message}")
+                    raise RuntimeError(f"upload_erp_file failed for ticket_id {tick_id}: {uplresult.message}")
+                logger.info(f"upload_media ok for ticket_id={tick_id}: {uplresult.message}")
+
+                user = None
+                if user_id is not None:
+                    user = db.session.get(User, int(user_id))
+                    if user:
+                        user.last_action = datetime.now()
+                        user.last_ip = ip_address
+                        user.last_lat = last_lat
+                        user.last_lon = last_lon
+                        db.session.commit()
+
+                new_event = EventItem(
+                    user_id=user_id,
+                    user_name=user.name,
+                    action="upl_file",
+                    use_unit_id=tick_id,
+                    last_lat=last_lat,
+                    last_lon=last_lon,
+                    ip_address=ip_address
+                )
+                db.session.add(new_event)
+                db.session.commit()
+
+            with_wowi_retry(_do, tick_id=ticket_id, file_path=stored_path,)
+
+            try:
+                os.remove(stored_path)
+            except Exception as e:
+                logger.warning(f"Could not delete file '{stored_path}': {str(e)}")
+
+            return {"status": "ok"}
+        except Exception as e:
+            logger.error(f"Task upload_erp_file failed for ticket_id={ticket_id}: {str(e)}")
             raise self.retry(exc=e, countdown=5, max_retries=5)
 
     @celery.task(bind=True, name="tasks.write_use_unit_data")

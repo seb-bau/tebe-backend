@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set page_title = "Ansprechpartner: Sichtbarkeit" %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-4">{{ page_title }}</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-2">
+                <div class="text-muted small">ID</div>
+                <div class="fw-semibold">{{ official.id }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Short</div>
+                <div class="fw-semibold">{{ official.short or "-" }}</div>
+            </div>
+            <div class="col-md-7">
+                <div class="text-muted small">Name</div>
+                <div class="fw-semibold">{{ official.name }}</div>
+            </div>
+        </div>
+
+        <div class="row g-2 mt-3">
+            <div class="col-md-3">
+                <div class="text-muted small">ERP Person</div>
+                <div class="fw-semibold">{{ official.erp_person_id }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">ERP User</div>
+                <div class="fw-semibold">{{ official.erp_user_id }}</div>
+            </div>
+            <div class="col-md-6">
+                <div class="text-muted small">Abteilungen</div>
+                <div class="fw-semibold">{{ official.departments|length }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="post" class="card">
+    <div class="card-body">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="visible" name="visible"
+                   {% if official.visible %}checked{% endif %}>
+            <label class="form-check-label" for="visible">Sichtbar</label>
+        </div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Speichern</button>
+        <a href="{{ url_for('admin_officials_list') }}" class="btn btn-secondary">Abbrechen</a>
+    </div>
+</form>
+{% endblock %}
