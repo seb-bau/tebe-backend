@@ -80,7 +80,7 @@ def register_routes_api_media(app):
         def _do_app_uu_floor_plan(wowi: WowiPy, uu_id: int):
             uumedia = wowi.get_media(entity_name="UseUnit", entity_id=uu_id)
             for entry in uumedia:
-                if entry.picture_type_name == "Grundriss":
+                if entry.picture_type_name == "Grundriss" or entry.remark == "Grundriss":
                     with tempfile.TemporaryDirectory() as tmpdir:
                         file_path = os.path.join(tmpdir, entry.file_name)
                         wowi.download_media("UseUnit", entry.file_guid, tmpdir, entry.file_name)
