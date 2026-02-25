@@ -82,18 +82,17 @@ def register_routes_api_contacts(app):
                             if content != person_phone and content != person_mobile:
                                 additional_numbers.append(content)
 
-                if person_email or person_phone or person_mobile:
-                    contact_entry = {
-                        "role": person_role,
-                        "name": person_name,
-                        "gender": person_gender,
-                        "email": person_email,
-                        "phone": person_phone,
-                        "mobile": person_mobile,
-                        "birth_date": person_birth_date,
-                        "additional_numbers": additional_numbers
-                    }
-                    contact_items.append(contact_entry)
+                contact_entry = {
+                    "role": person_role,
+                    "name": person_name,
+                    "gender": person_gender,
+                    "email": person_email,
+                    "phone": person_phone,
+                    "mobile": person_mobile,
+                    "birth_date": person_birth_date,
+                    "additional_numbers": additional_numbers
+                }
+                contact_items.append(contact_entry)
             if not contact_items:
                 return abort(404)
             else:
