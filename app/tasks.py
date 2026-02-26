@@ -7,6 +7,8 @@ from app.models import User, ComponentCatalogItem, EstatePictureType, MediaEntit
 from app.helpers import normalize_exif_orientation
 from wowipy.wowipy import WowiPy, MediaData, FileData
 from app.erp import create_facility, create_component, edit_component, with_wowi_retry, WowiPermanentError
+from wowicache.models import WowiCache, UseUnit, Building
+from flask import current_app
 
 logger = logging.getLogger()
 
@@ -117,11 +119,26 @@ def register_tasks(celery):
                         user.last_lon = last_lon
                         db.session.commit()
 
+                entity_idnum = None
+                try:
+                    cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
+                    if entity_type_name == "UseUnit":
+                        cache_uu = cache.session.get(UseUnit, entity_id)
+                        if cache_uu:
+                            entity_idnum = cache_uu.id_num
+                    elif entity_type_name == "Building":
+                        cache_buil = cache.session.get(Building, entity_id)
+                        if cache_buil:
+                            entity_idnum = cache_buil.id_num
+                except Exception as ex:
+                    logger.error(f"upload_erp_photo: Error while collecting event data: {str(ex)}")
+
                 new_event = EventItem(
                     user_id=user_id,
                     user_name=user.name,
                     action="upl_photo",
                     use_unit_id=entity_id,
+                    use_unit_idnum=entity_idnum,
                     last_lat=last_lat,
                     last_lon=last_lon,
                     ip_address=ip_address

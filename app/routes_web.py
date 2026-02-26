@@ -40,7 +40,7 @@ def register_routes_web(app):
         total_events = db.session.query(func.count(EventItem.id)).scalar() or 0
         total_changes = (
             db.session.query(func.count(EventItem.id))
-            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.action.in_(["create", "edit", "upl_photo"]))
             .scalar()
             or 0
         )
@@ -60,14 +60,14 @@ def register_routes_web(app):
 
         changes_7d = (
             db.session.query(func.count(EventItem.id))
-            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.action.in_(["create", "edit", "upl_photo"]))
             .filter(EventItem.stamp >= last_7)
             .scalar()
             or 0
         )
         changes_30d = (
             db.session.query(func.count(EventItem.id))
-            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.action.in_(["create", "edit", "upl_photo"]))
             .filter(EventItem.stamp >= last_30)
             .scalar()
             or 0
@@ -75,7 +75,7 @@ def register_routes_web(app):
 
         daily_rows = (
             db.session.query(func.date(EventItem.stamp).label("d"), func.count(EventItem.id).label("c"))
-            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.action.in_(["create", "edit", "upl_photo"]))
             .filter(EventItem.stamp >= year_start)
             .group_by("d")
             .order_by("d")
@@ -103,7 +103,7 @@ def register_routes_web(app):
 
         top_users_30d = (
             db.session.query(EventItem.user_name, func.count(EventItem.id).label("c"))
-            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.action.in_(["create", "edit", "upl_photo"]))
             .filter(EventItem.stamp >= last_30)
             .group_by(EventItem.user_name)
             .order_by(func.count(EventItem.id).desc(), EventItem.user_name.asc())
@@ -114,7 +114,7 @@ def register_routes_web(app):
 
         recent_changes = (
             db.session.query(EventItem)
-            .filter(EventItem.action.in_(["create", "edit"]))
+            .filter(EventItem.action.in_(["create", "edit", "upl_photo"]))
             .order_by(EventItem.stamp.desc(), EventItem.id.desc())
             .limit(20)
             .all()

@@ -254,15 +254,19 @@ class EventItem(db.Model):
     action = db.Column(db.String(50), nullable=False)
     stamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
     use_unit_id = db.Column(db.Integer, nullable=True)
+    use_unit_idnum = db.Column(db.String(200), nullable=True)
     last_lat = db.Column(db.Numeric, nullable=True)
     last_lon = db.Column(db.Numeric, nullable=True)
     facility_id = db.Column(db.Integer, nullable=True)
     facility_catalog_id = db.Column(db.Integer, nullable=True)
     component_id = db.Column(db.Integer, nullable=True)
+    component_name = db.Column(db.String(200), nullable=True)
     component_catalog_id = db.Column(db.Integer, nullable=True)
     sub_component_ids = db.Column(db.String(255), nullable=True)
+    sub_component_names = db.Column(db.String(255), nullable=True)
     scorable = db.Column(db.Boolean, default=True, nullable=True)
     ip_address = db.Column(db.String(100), nullable=True)
+    quantity = db.Column(db.Integer, nullable=True)
 
 
 class FacilityItem(db.Model):

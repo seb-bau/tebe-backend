@@ -470,6 +470,24 @@ def create_component(
                 f"facility_id: {facility_id} under_component_ids: '{str(sub_components)}' "
                 f"comment '{comment}'")
 
+    sub_component_names = []
+    sub_names = None
+    uu_idnum = None
+    try:
+        if sub_components:
+            for tsub in sub_components:
+                tsub_obj = db.session.get(UnderComponentItem, tsub)
+                sub_component_names.append(tsub_obj.name)
+            sub_names = ",".join(sub_component_names)
+            sub_names = sub_names[:250]
+        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
+        cache_uu = cache.session.get(UseUnit, puu_id)
+        if cache_uu:
+            uu_idnum = cache_uu.id_num
+
+    except Exception as e:
+        logger.error(f"create_component: Error while getting event info: {str(e)}")
+
     new_event = EventItem(
         user_id=puser.id,
         user_name=puser.name,
@@ -478,11 +496,15 @@ def create_component(
         last_lat=last_lat,
         last_lon=last_lon,
         use_unit_id=puu_id,
+        use_unit_idnum=uu_idnum,
         facility_id=facility_id,
         facility_catalog_id=component_cat_item.facility_catalog_item_id,
         component_id=cr_f_result.data["Id"],
+        component_name=component_cat_item.name,
         component_catalog_id=component_cat_item.id,
-        sub_component_ids=",".join(str(e) for e in sub_components) if sub_components else None
+        sub_component_ids=",".join(str(e) for e in sub_components) if sub_components else None,
+        sub_component_names=sub_names,
+        quantity=count
     )
     db.session.add(new_event)
     db.session.commit()
@@ -533,6 +555,24 @@ def edit_component(
     if puser is not None:
         puser.last_action = datetime.now()
 
+    sub_component_names = []
+    sub_names = None
+    uu_idnum = None
+    try:
+        if sub_components:
+            for tsub in sub_components:
+                tsub_obj = db.session.get(UnderComponentItem, tsub)
+                sub_component_names.append(tsub_obj.name)
+            sub_names = ",".join(sub_component_names)
+            sub_names = sub_names[:250]
+        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
+        cache_uu = cache.session.get(UseUnit, the_component.use_unit_id)
+        if cache_uu:
+            uu_idnum = cache_uu.id_num
+
+    except Exception as e:
+        logger.error(f"edit_component: Error while collecting event info: {str(e)}")
+
     psub_string = ",".join(str(e) for e in sub_components) if sub_components else None
 
     new_event = None
@@ -545,11 +585,15 @@ def edit_component(
             last_lat=last_lat,
             last_lon=last_lon,
             use_unit_id=the_component.use_unit_id,
+            use_unit_idnum=uu_idnum,
             facility_id=the_component.facility_id,
             facility_catalog_id=component_cat_item.facility_catalog_item_id,
             component_id=component_id,
+            component_name=the_component.name,
             component_catalog_id=component_cat_item.id,
-            sub_component_ids=psub_string
+            sub_component_ids=psub_string,
+            sub_component_names=sub_names,
+            quantity=count
         )
 
     if unknown:

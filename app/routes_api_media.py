@@ -1,9 +1,10 @@
 from flask import request, jsonify, abort
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from wowipy.wowipy import WowiPy
-from app.models import User
+from app.models import User, ResponsibleOfficial
 from flask import current_app, send_file
 from app.erp import with_wowi_retry
+from app.extensions import db
 import logging
 
 logger = logging.getLogger()
@@ -89,3 +90,27 @@ def register_routes_api_media(app):
 
         oretval = with_wowi_retry(_do_app_uu_floor_plan, uu_id=use_unit_id)
         return oretval
+
+    @app.route("/app/floor_plan_catalog", methods=["GET"])
+    @jwt_required()
+    def app_floor_plan_catalog():
+        if current_app.config['DEMO_MODE']:
+            return abort(404)
+
+        floor_plan_official = current_app.config['INI_CONFIG'].get("OpenWowi", "floor_plan_official", fallback=None)
+        plan_change_subject = current_app.config['INI_CONFIG'].get("OpenWowi", "floor_plan_subject", fallback=None)
+        plan_change_content = current_app.config['INI_CONFIG'].get("OpenWowi", "floor_plan_content", fallback=None)
+        if not floor_plan_official:
+            return abort(404)
+        official = (db.session.query(ResponsibleOfficial)
+                    .filter(ResponsibleOfficial.erp_user_id == floor_plan_official)
+                    .first()
+                    )
+        if not official:
+            return abort(404)
+
+        return jsonify({
+            "plan_official_erp_id": floor_plan_official,
+            "plan_change_subject": plan_change_subject,
+            "plan_change_content": plan_change_content
+        })
