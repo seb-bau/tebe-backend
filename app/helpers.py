@@ -2,6 +2,32 @@ from flask import jsonify
 import json
 from pathlib import Path
 from PIL import Image, ImageOps
+import random
+import string
+
+
+def generate_random_string(
+    length: int = 6,
+    use_uppercase: bool = False,
+    use_lowercase: bool = True,
+    use_digits: bool = True,
+    use_special_chars: bool = False,
+) -> str:
+    char_pool = ""
+
+    if use_uppercase:
+        char_pool += string.ascii_uppercase
+    if use_lowercase:
+        char_pool += string.ascii_lowercase
+    if use_digits:
+        char_pool += string.digits
+    if use_special_chars:
+        char_pool += string.punctuation
+
+    if not char_pool:
+        raise ValueError("There has to be at least one char pool.")
+
+    return "".join(random.choice(char_pool) for _ in range(length))
 
 
 def _json_from_file(pathstr: str):

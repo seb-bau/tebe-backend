@@ -10,7 +10,9 @@ from app.models import (FacilityCatalogItem, ComponentCatalogItem, UnderComponen
 from threading import Lock
 from datetime import datetime
 import re
+import os
 from wowicache.models import WowiCache, UseUnit
+import tempfile
 
 logger = logging.getLogger()
 
@@ -660,4 +662,30 @@ def get_responsible_official(wowi: WowiPy, use_unit_id: int, department_id: int)
                 return None
             return tresp
     logger.error(f"get_responsible_official: No entry for eco-unit '{eco_unit_id}' department '{department_id}'")
+    return None
+
+
+def download_floor_plan(wowi: WowiPy, uu_id: int):
+    uumedia = wowi.get_media(entity_name="UseUnit", entity_id=uu_id)
+    # Es kann mehrere Grundrisse geben. Wir möchten den neusten ausgeben
+    dest_media_entry = None
+    for entry in uumedia:
+        if entry.picture_type_name == "Grundriss" or entry.remark == "Grundriss":
+            if not dest_media_entry:
+                dest_media_entry = entry
+            else:
+                # Wenn dieser Eintrag neuer ist - überschreiben
+                if (datetime.strptime(entry.creation_date, "%Y-%m-%d") >
+                        datetime.strptime(dest_media_entry.creation_date, "%Y-%m-%d")):
+                    dest_media_entry = entry
+    if dest_media_entry:
+        print(f"MEDIA ID {dest_media_entry.file_guid}")
+        tmpdir = os.path.join(tempfile.gettempdir(), "tebe_use_unit_floor_plans")
+        os.makedirs(tmpdir, exist_ok=True)
+        file_path = os.path.join(tmpdir, dest_media_entry.file_name)
+        wowi.download_media("UseUnit", dest_media_entry.file_guid, tmpdir, dest_media_entry.file_name)
+        return {
+            "file_path": file_path,
+            "file_name": dest_media_entry.file_name
+        }
     return None

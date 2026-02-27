@@ -10,7 +10,7 @@ from werkzeug.utils import secure_filename
 from app.erp import get_responsible_official, get_wowi_client
 from wowipy.wowipy import WowiPy
 import wowipy.models
-from app.models import ResponsibleOfficial, Department, CheckList, CheckListItem, User
+from app.models import ResponsibleOfficial, Department, CheckList, CheckListItem, User, EstatePictureType, MediaEntity
 from flask import current_app
 import logging
 from app.extensions import db
@@ -43,10 +43,12 @@ def register_routes_api_ticket(app):
         use_unit_id = normalize_int(request.form.get("use_unit_id"))
         department_id = normalize_int(request.form.get("dest_department_id"))
         dest_user_id = normalize_int(request.form.get("dest_user_id"))
+        is_floor_plan_change = bool(request.form.get("is_floor_plan_change"))
         temp_dir = os.path.join(tempfile.gettempdir(), "tebe_ticket_photos")
         os.makedirs(temp_dir, exist_ok=True)
         subject = request.form.get("subject")
         content = request.form.get("content")
+        upload_floor_plan = current_app.config["INI_CONFIG"].get("OpenWowi", "replace_floor_plan", fallback=False)
 
         current_user_id = int(get_jwt_identity())
         ip_address = request.environ.get("REMOTE_ADDR")
@@ -101,7 +103,7 @@ def register_routes_api_ticket(app):
 
         # PHOTO-HANDLING START
         new_ticket_id = int(rslt.data["Id"])
-        files = request.files.getlist("photos[]")  # wichtig: getlist für multiple
+        files = request.files.getlist("photos[]")
         if len(files) > MAX_FILES:
             return jsonify({"error": f"max {MAX_FILES} photos"}), 400
 
@@ -129,6 +131,25 @@ def register_routes_api_ticket(app):
                                                             ip_address,
                                                             last_lat,
                                                             last_lon])
+
+            if upload_floor_plan and is_floor_plan_change:
+                pic_type = db.session.query(EstatePictureType).filter(EstatePictureType.code == "Groundplan").first()
+                med_ent = db.session.query(MediaEntity).filter(MediaEntity.name == "UseUnit").first()
+                if not pic_type or not med_ent:
+                    logger.error(f"route_api_ticket_create: Cannot upload new groundplan because of missing "
+                                 f"picture type or media entity db entry")
+                else:
+                    celery.send_task("tasks.upload_erp_photo", args=[
+                        use_unit_id,
+                        path,
+                        pic_type.id,
+                        med_ent.id,
+                        None,
+                        current_user_id,
+                        ip_address,
+                        last_lat,
+                        last_lon
+                    ])
         # PHOTO-HANDLING END
 
         return jsonify(rslt.data), rslt.status_code

@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from wowipy.wowipy import WowiPy
 from app.models import User, ResponsibleOfficial
 from flask import current_app, send_file
-from app.erp import with_wowi_retry
+from app.erp import with_wowi_retry, download_floor_plan
 from app.extensions import db
 import logging
 
@@ -79,14 +79,10 @@ def register_routes_api_media(app):
             return send_file(current_app.config['DEMO_FLOOR_PLAN'], download_name="demo_plan.png")
 
         def _do_app_uu_floor_plan(wowi: WowiPy, uu_id: int):
-            uumedia = wowi.get_media(entity_name="UseUnit", entity_id=uu_id)
-            for entry in uumedia:
-                if entry.picture_type_name == "Grundriss" or entry.remark == "Grundriss":
-                    with tempfile.TemporaryDirectory() as tmpdir:
-                        file_path = os.path.join(tmpdir, entry.file_name)
-                        wowi.download_media("UseUnit", entry.file_guid, tmpdir, entry.file_name)
-                        return send_file(file_path, download_name=entry.file_name)
-            return abort(404)
+            floor_plan_file = download_floor_plan(wowi, uu_id)
+            if not floor_plan_file:
+                return abort(404)
+            return send_file(floor_plan_file["file_path"], download_name=floor_plan_file["file_name"])
 
         oretval = with_wowi_retry(_do_app_uu_floor_plan, uu_id=use_unit_id)
         return oretval

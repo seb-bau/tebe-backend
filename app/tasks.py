@@ -220,7 +220,7 @@ def register_tasks(celery):
                 db.session.add(new_event)
                 db.session.commit()
 
-            with_wowi_retry(_do, tick_id=ticket_id, file_path=stored_path,)
+            with_wowi_retry(_do, tick_id=ticket_id, file_path=stored_path)
 
             try:
                 os.remove(stored_path)
