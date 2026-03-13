@@ -8,6 +8,7 @@ from flask import current_app
 from app.erp import with_wowi_retry
 import logging
 from app.helpers import _json_from_file
+from app.payloads import store_payload
 
 logger = logging.getLogger()
 
@@ -121,14 +122,11 @@ def register_routes_api_inventory(app):
         if current_app.config["DEMO_MODE"]:
             return jsonify({"msg": "ok"}), 200
 
+        store_payload()
+
         data = request.get_json(silent=True)
         if not isinstance(data, list):
             return jsonify({"msg": "invalid payload"}), 400
-
-        if current_app.config["STORE_PAYLOADS"]:
-            new_payload = RawPayload(payload=data)
-            db.session.add(new_payload)
-            db.session.commit()
 
         current_user_id = int(get_jwt_identity())
         ip_address = request.environ.get("REMOTE_ADDR")

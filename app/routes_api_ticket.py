@@ -10,10 +10,12 @@ from werkzeug.utils import secure_filename
 from app.erp import get_responsible_official, get_wowi_client
 from wowipy.wowipy import WowiPy
 import wowipy.models
-from app.models import ResponsibleOfficial, Department, CheckList, CheckListItem, User, EstatePictureType, MediaEntity
+from app.models import (ResponsibleOfficial, Department, CheckList, CheckListItem, User, EstatePictureType, MediaEntity,
+                        EventItem)
 from flask import current_app
 import logging
 from app.extensions import db
+from app.payloads import store_payload
 
 logger = logging.getLogger()
 
@@ -39,6 +41,7 @@ def register_routes_api_ticket(app):
     @app.route("/app/ticket/create", methods=["POST"])
     @jwt_required()
     def route_api_ticket_create():
+        store_payload()
         wowi = get_wowi_client()
         use_unit_id = normalize_int(request.form.get("use_unit_id"))
         department_id = normalize_int(request.form.get("dest_department_id"))
@@ -106,6 +109,21 @@ def register_routes_api_ticket(app):
         files = request.files.getlist("photos[]")
         if len(files) > MAX_FILES:
             return jsonify({"error": f"max {MAX_FILES} photos"}), 400
+
+        try:
+            new_event = EventItem(
+                user_id=current_user_id,
+                user_name=user.name,
+                action="create_ticket",
+                use_unit_id=new_ticket_id,
+                last_lat=last_lat,
+                last_lon=last_lon,
+                ip_address=ip_address
+            )
+            db.session.add(new_event)
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"api_ticket_create: Error while creating event item: {str(e)}")
 
         saved = []
         for f in files:

@@ -290,8 +290,11 @@ class RawPayload(db.Model):
     __tablename__ = "raw_payload"
 
     id = db.Column(db.Integer, primary_key=True)
+    route = db.Column(db.String(220), nullable=True)
+    method = db.Column(db.String(100), nullable=True)
+    user_id = db.Column(db.Integer, nullable=True)
     stamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    payload = db.Column(db.JSON)
+    payload = db.Column(db.JSON, nullable=True)
 
 
 class EstatePictureType(db.Model):

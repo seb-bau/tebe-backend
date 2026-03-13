@@ -5,6 +5,7 @@ from app.models import User, ResponsibleOfficial
 from flask import current_app, send_file
 from app.erp import with_wowi_retry, download_floor_plan
 from app.extensions import db
+from app.payloads import store_payload
 import logging
 
 logger = logging.getLogger()
@@ -22,6 +23,8 @@ def register_routes_api_media(app):
     def route_use_unit_photos():
         if current_app.config["DEMO_MODE"]:
             return jsonify({"msg": "ok"}), 201
+
+        store_payload()
 
         photo = request.files.get("photo")
         use_unit_id_raw = request.form.get("use_unit_id")
