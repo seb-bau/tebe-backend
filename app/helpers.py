@@ -4,6 +4,9 @@ from pathlib import Path
 from PIL import Image, ImageOps
 import random
 import string
+import logging
+
+logger = logging.getLogger()
 
 
 def generate_random_string(
@@ -57,6 +60,7 @@ def normalize_exif_orientation(path: str) -> None:
         im2 = ImageOps.exif_transpose(im)
 
         fmt = (im.format or "JPEG").upper()
+        logger.debug(f"normalize_exif_orientation: File '{path}' has format '{fmt}'")
 
         if fmt not in ("JPEG", "JPG", "PNG"):
             fmt = "JPEG"

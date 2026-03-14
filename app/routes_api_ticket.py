@@ -19,7 +19,7 @@ from app.payloads import store_payload
 
 logger = logging.getLogger()
 
-MAX_FILES = 5
+MAX_FILES = 20
 ALLOWED_EXT = {".jpg", ".jpeg", ".png"}
 
 
