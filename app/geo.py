@@ -36,6 +36,7 @@ def haversine_distance_m(lat1, lon1, lat2, lon2):
 def get_buildings_in_radius_m(center_lat, center_lon, radius_m):
     center_lat = float(center_lat)
     center_lon = float(center_lon)
+    radius_m = float(radius_m)
 
     geolocations = GeoBuilding.query.all()
     result = []

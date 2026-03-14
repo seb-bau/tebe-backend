@@ -11,8 +11,8 @@ import logging
 import numbers
 from app.helpers import _json_from_file
 
-LIMIT_MAX = 20
-LIMIT_DEFAULT = 20
+LIMIT_MAX = 50
+LIMIT_DEFAULT = 50
 
 logger = logging.getLogger()
 
@@ -34,9 +34,12 @@ def has_table(table_name: str) -> bool:
 
 
 def register_routes_api_masterdata(app):
-    def building_ids_from_radius(lat, lon, radius_m):
+    def buildings_from_radius(lat, lon, radius_m, limit=None):
         locations_found = get_buildings_in_radius_m(lat, lon, radius_m=radius_m)
-        return {item["building_id"] for item in locations_found if item.get("building_id")}
+        locations_found = sorted(locations_found, key=lambda x: x["distance_m"])
+        if limit is not None:
+            locations_found = locations_found[:limit]
+        return locations_found
 
     def apply_fulltext(query, fulltext: str):
         ft = (fulltext or "").strip()
@@ -55,62 +58,82 @@ def register_routes_api_masterdata(app):
     @app.route("/app/use-unit/search", methods=["GET"])
     @jwt_required()
     def route_search():
-        if current_app.config['DEMO_MODE']:
-            return _json_from_file(current_app.config['DEMO_SEARCH'])
+        if current_app.config["DEMO_MODE"]:
+            return _json_from_file(current_app.config["DEMO_SEARCH"])
 
-        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
+        cache = WowiCache(current_app.config["INI_CONFIG"].get("Wowicache", "connection_uri"))
 
         param_fulltext = request.args.get("fulltext")
-        param_radius = request.args.get("radius")  # meters
+        param_radius = request.args.get("radius")
         param_lat = request.args.get("lat")
         param_lon = request.args.get("lon")
         param_limit = request.args.get("limit")
         only_terminated = get_bool_arg("only_terminated")
         only_vacant = get_bool_arg("only_vacant")
+
+        lat = None
+        lon = None
+        distance_map = {}
+
         try:
             limit = int(param_limit)
         except (ValueError, TypeError):
             limit = LIMIT_DEFAULT
+
         if limit > LIMIT_MAX:
             limit = LIMIT_MAX
 
         current_user_id = int(get_jwt_identity())
-        user: User
-        user = User.query.get(current_user_id)
+        user: User = User.query.get(current_user_id)
         user.last_action = datetime.now()
         user.last_lat = param_lat
         user.last_lon = param_lon
-        user.last_ip = request.environ['REMOTE_ADDR']
+        user.last_ip = request.environ["REMOTE_ADDR"]
         db.session.commit()
 
         q = cache.session.query(Building)
-
         q = apply_fulltext(q, param_fulltext)
+
         if param_radius and param_lat and param_lon:
             radius_m = float(param_radius)
             lat = float(param_lat)
             lon = float(param_lon)
 
-            building_ids = building_ids_from_radius(lat, lon, radius_m)
+            nearby_buildings = buildings_from_radius(lat, lon, radius_m, limit=limit)
+            building_ids = [item["building_id"] for item in nearby_buildings if item.get("building_id")]
+            distance_map = {
+                item["building_id"]: item["distance_m"]
+                for item in nearby_buildings
+                if item.get("building_id")
+            }
 
             if not building_ids:
                 return jsonify({"items": []}), 200
 
             q = q.filter(Building.internal_id.in_(building_ids))
-        buildings = (
-            q.order_by(Building.street_complete)
-            .limit(limit)
-            .all()
-        )
+            buildings = q.all()
+
+            building_map = {b.internal_id: b for b in buildings}
+            buildings = [building_map[building_id] for building_id in building_ids if building_id in building_map]
+        else:
+            buildings = (
+                q.order_by(Building.street_complete)
+                .limit(limit)
+                .all()
+            )
+
         retval = []
+
         building: Building
         for building in buildings:
             uu_info = []
             uus = cache.session.query(UseUnit).filter(UseUnit.building_id == building.internal_id).all()
-            uu: UseUnit
             object_has_relevant_use_units = False
+
+            uu: UseUnit
             for uu in uus:
                 contract_info = {}
+
                 contract: Contract
                 for contract in uu.contracts:
                     if contract.status_name == "beendet":
@@ -119,11 +142,12 @@ def register_routes_api_masterdata(app):
                         continue
                     if only_terminated and contract.status_name != "gekündigt":
                         continue
+
                     if not contract.is_vacancy:
-                        contractor: Contractor
-                        contractor = contract.contractors[0]
-                        person: Person
-                        person = contractor.person
+                        if not contract.contractors:
+                            continue
+                        contractor: Contractor = contract.contractors[0]
+                        person: Person = contractor.person
                         contract_info = {
                             "id_num": contract.id_num,
                             "contractor_name": f"{person.last_name}, {person.first_name}",
@@ -137,30 +161,42 @@ def register_routes_api_masterdata(app):
                             "start": contract.contract_start,
                             "end": contract.contract_end
                         }
+
                     object_has_relevant_use_units = True
                     break
+
                 if (only_vacant or only_terminated) and not contract_info:
                     continue
+
                 uu_info.append({
                     "id_num": uu.id_num,
                     "id": uu.internal_id,
                     "location": uu.description_of_position,
                     "contract": contract_info
                 })
-                location: GeoBuilding
-            location = db.session.query(GeoBuilding).filter(GeoBuilding.erp_id == building.internal_id).first()
+
+            if not object_has_relevant_use_units:
+                continue
+
+            location: GeoBuilding = db.session.query(GeoBuilding).filter(
+                GeoBuilding.erp_id == building.internal_id
+            ).first()
+
             if location:
                 loc_lat = location.lat
                 loc_lon = location.lon
-                distance = haversine_distance_m(location.lat, location.lon, param_lat, param_lon)
-                if distance:
-                    distance = round(distance)
+
+                if building.internal_id in distance_map:
+                    distance = round(distance_map[building.internal_id])
+                elif lat is not None and lon is not None:
+                    distance = round(haversine_distance_m(loc_lat, loc_lon, lat, lon))
+                else:
+                    distance = None
             else:
-                distance = None
                 loc_lat = None
                 loc_lon = None
-            if not object_has_relevant_use_units:
-                continue
+                distance = None
+
             retval.append({
                 "id": building.internal_id,
                 "id_num": building.id_num,
@@ -172,6 +208,7 @@ def register_routes_api_masterdata(app):
                 "lon": loc_lon,
                 "distance": distance
             })
+
         return jsonify({
             "items": retval
         })
