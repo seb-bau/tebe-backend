@@ -1,10 +1,12 @@
 from flask import jsonify
 import json
 from pathlib import Path
+import shutil
 from PIL import Image, ImageOps
 import random
 import string
 import logging
+from datetime import datetime
 
 logger = logging.getLogger()
 
@@ -55,7 +57,10 @@ def _json_from_file(pathstr: str):
 
 
 def normalize_exif_orientation(path: str) -> None:
-
+    p = Path(path)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = p.with_name(f"{p.stem}_backup_{ts}{p.suffix}")
+    shutil.copy2(p, backup_path)
     with Image.open(path) as im:
         im2 = ImageOps.exif_transpose(im)
 
