@@ -1,7 +1,7 @@
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from wowipy.wowipy import WowiPy, ComponentElement
-from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem, RawPayload
+from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem
 from app.models import FacilityItem
 from app.extensions import db
 from flask import current_app
@@ -24,7 +24,14 @@ def register_routes_api_inventory(app):
         if not user or not user.role_id:
             return jsonify({"msg": "user has no role"}), 403
 
+        # Erlaubte Komponenten sind erlaubt und für die entsprechende Benutzerrolle aktiv
         role_id = user.role_id
+        allowed_components = db.session.query(ComponentCatalogItem).filter(
+            ComponentCatalogItem.enabled.is_(True),
+            ComponentCatalogItem.roles.any(Role.id == role_id),
+        ).all()
+
+        allowed_component_ids = {item.id for item in allowed_components}
 
         def _do_app_uu_current_data(wowi: WowiPy, uu_id: int):
             components = wowi.get_components(use_unit_id=uu_id)
@@ -39,7 +46,7 @@ def register_routes_api_inventory(app):
                                  f"'{component.component_catalog_id}' for use_unit_id '{use_unit_id}' for user "
                                  f"'todo'")
                     return jsonify({"msg": f"Missing component catalog item '{component.component_catalog_id}'"}), 500
-                if not comp_cat_item.enabled:
+                if component.component_catalog_id not in allowed_component_ids:
                     continue
 
                 if comp_cat_item.under_components:
@@ -79,13 +86,8 @@ def register_routes_api_inventory(app):
                 })
                 found_types.append(comp_cat_item.id)
 
-            comp_cat = db.session.query(ComponentCatalogItem).filter(
-                ComponentCatalogItem.enabled.is_(True),
-                ComponentCatalogItem.roles.any(Role.id == role_id),
-            ).all()
-
             cat_item: ComponentCatalogItem
-            for cat_item in comp_cat:
+            for cat_item in allowed_components:
                 fac_cat = db.session.get(FacilityCatalogItem, cat_item.facility_catalog_item_id)
                 if cat_item.id not in found_types:
                     under_components = []
