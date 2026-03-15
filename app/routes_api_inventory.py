@@ -9,8 +9,41 @@ from app.erp import with_wowi_retry
 import logging
 from app.helpers import _json_from_file
 from app.payloads import store_payload
+from datetime import datetime
 
 logger = logging.getLogger()
+
+
+def component_valid(comp_object: ComponentElement) -> bool:
+    # Hinweis: Wir behandeln keine Komponenten, die evtl. in die Zukunft eingetragen wurden.
+    # Fallback der Methode ist "True", weil das valid_to-Feld eher selten im ERP genutzt wird.
+    if not comp_object.valid_to:
+        return True
+
+    check_date = None
+    if isinstance(comp_object.valid_to, datetime):
+        check_date = comp_object.valid_to
+    elif isinstance(comp_object.valid_to, str):
+        try:
+            check_date = datetime.strptime(comp_object.valid_to, "%Y-%m-%d")
+        except ValueError as e:
+            logger.error(f"component_valid: ValueError while converting valid_to to datetime."
+                         f"Comp-ID: {comp_object.id_}, "
+                         f"valid_to: {comp_object.valid_to}, "
+                         f"ValueError: {str(e)}")
+            return True
+
+    if not check_date:
+        logger.error(f"component_valid: valid_to-Date is neither datetime nor str."
+                     f"Comp-ID: {comp_object.id_}, "
+                     f"valid_to: {comp_object.valid_to}, "
+                     f"Type: {type(comp_object.valid_to)}")
+        return True
+
+    if check_date >= datetime.now():
+        return True
+
+    return False
 
 
 def register_routes_api_inventory(app):
@@ -47,6 +80,9 @@ def register_routes_api_inventory(app):
                                  f"'todo'")
                     return jsonify({"msg": f"Missing component catalog item '{component.component_catalog_id}'"}), 500
                 if component.component_catalog_id not in allowed_component_ids:
+                    continue
+
+                if not component_valid(component):
                     continue
 
                 if comp_cat_item.under_components:
