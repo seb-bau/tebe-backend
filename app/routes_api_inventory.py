@@ -135,7 +135,7 @@ def register_routes_api_inventory(app):
                 fac_cat = db.session.get(FacilityCatalogItem, fac_item.facility_catalog_item_id)
                 retval_existing.append({
                     "id": component.id_,
-                    "name": component.name,
+                    "name": comp_cat_item.name,
                     "component_catalog_id": component.component_catalog_id,
                     "quantitiy": correct_quantity(under_components, int(component.count), component.id_),
                     "unit": comp_cat_item.quantity_type_name,
