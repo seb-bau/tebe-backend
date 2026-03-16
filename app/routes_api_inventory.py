@@ -46,6 +46,34 @@ def component_valid(comp_object: ComponentElement) -> bool:
     return False
 
 
+def correct_quantity(under_component_list: list | None, current_quantitiy: int, component_id: int) -> int:
+    # It is possible, that the User issued the negative UnderComponent for the component but set the
+    # quantitiy to 1. This signals an inconsistent state to the app
+    # Workaround: If Undercomponent is set to "No" set quantity to 0
+    if not under_component_list:
+        return current_quantitiy
+    bool_handling = current_app.config["INI_CONFIG"].get("Handling", "bool_handling", fallback="quantity")
+    if bool_handling.lower() != "sub_components":
+        return current_quantitiy
+    sub_component_yes_id = current_app.config["INI_CONFIG"].getint(
+        "Handling", "bool_sub_component_yes_id", fallback=0)
+    sub_component_no_id = current_app.config["INI_CONFIG"].getint(
+        "Handling", "bool_sub_component_no_id", fallback=0)
+    if not sub_component_yes_id or not sub_component_no_id:
+        return current_quantitiy
+
+    if any(c["id"] == sub_component_yes_id and c["selected"] for c in under_component_list) and current_quantitiy < 1:
+        logger.warning(f"correct_quantity: Incorrect quantity for component id {component_id}. Yes-UnderComp selected"
+                       f" but quantity < 1")
+        return 1
+
+    if any(c["id"] == sub_component_no_id and c["selected"] for c in under_component_list) and current_quantitiy > 0:
+        logger.warning(f"correct_quantity: Incorrect quantity for component id {component_id}. No-UnderComp selected"
+                       f" but quantity > 0")
+        return 0
+    return current_quantitiy
+
+
 def register_routes_api_inventory(app):
     @app.route("/app/use-unit/data/current/<int:use_unit_id>", methods=["GET"])
     @jwt_required()
@@ -109,7 +137,7 @@ def register_routes_api_inventory(app):
                     "id": component.id_,
                     "name": component.name,
                     "component_catalog_id": component.component_catalog_id,
-                    "quantitiy": component.count,
+                    "quantitiy": correct_quantity(under_components, int(component.count), component.id_),
                     "unit": comp_cat_item.quantity_type_name,
                     "under_components": under_components,
                     "facility_cat_id": component.facility_id,

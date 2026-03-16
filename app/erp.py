@@ -577,6 +577,56 @@ def edit_component(
 
     psub_string = ",".join(str(e) for e in sub_components) if sub_components else None
 
+    component_subs = []
+    if the_component.under_components:
+        for csub in the_component.under_components:
+            component_subs.append(csub.id_)
+
+    component_subs.sort()
+    sub_components.sort()
+
+    local_comment = the_component.comment
+    if isinstance(local_comment, str):
+        local_comment = local_comment.strip()
+    if not local_comment:
+        local_comment = None
+
+    local_count = int(the_component.count)
+
+    if component_subs == sub_components and local_comment == comment and local_count == count:
+        if puser is not None:
+            db.session.commit()
+        return True
+
+    # # Is there a difference to the erp stored component?
+    # is_different = False
+    # if count != the_component.count:
+    #     is_different = True
+    # if not is_different:
+    #     return True
+    #
+    # print(the_component.under_components)
+    # print(psub_components)
+
+    cr_f_result = wowi.edit_component(
+        component_id=component_id,
+        facility_id=the_component.facility_id,
+        name=component_cat_item.name,
+        count=count,
+        component_catalog_id=component_cat_item.id,
+        component_status_id=dest_component_status,
+        under_component_ids=sub_components,
+        comment=comment,
+        repair_relevance=the_component.repair_relevance,
+        lease_relevance=the_component.lease_relevance,
+        acquisition_date=the_component.acquisition_date,
+    )
+    _raise_for_result("edit_component", cr_f_result)
+    logger.info(f"edit_component: Use Unit '{the_component.use_unit_id}' "
+                f"component '{component_id}' edited. Count: {count} "
+                f"facility_id: {the_component.facility_id} under_component_ids: '{str(sub_components)}' "
+                f"comment '{comment}'")
+
     new_event = None
     if puser is not None:
         new_event = EventItem(
@@ -606,35 +656,6 @@ def edit_component(
             db.session.add(new_event)
         db.session.commit()
         return True
-
-    component_subs = []
-    if the_component.under_components:
-        for csub in the_component.under_components:
-            component_subs.append(csub.id_)
-
-    component_subs.sort()
-    sub_components.sort()
-
-    if component_subs == sub_components and the_component.comment == comment and the_component.count == count:
-        if puser is not None:
-            db.session.commit()
-        return True
-
-    cr_f_result = wowi.edit_component(
-        component_id=component_id,
-        facility_id=the_component.facility_id,
-        name=component_cat_item.name,
-        count=count,
-        component_catalog_id=component_cat_item.id,
-        component_status_id=dest_component_status,
-        under_component_ids=sub_components,
-        comment=comment
-    )
-    _raise_for_result("edit_component", cr_f_result)
-    logger.info(f"edit_component: Use Unit '{the_component.use_unit_id}' "
-                f"component '{component_id}' edited. Count: {count} "
-                f"facility_id: {the_component.facility_id} under_component_ids: '{str(sub_components)}' "
-                f"comment '{comment}'")
 
     if new_event is not None:
         db.session.add(new_event)
