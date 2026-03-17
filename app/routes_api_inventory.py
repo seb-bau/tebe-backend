@@ -46,6 +46,16 @@ def component_valid(comp_object: ComponentElement) -> bool:
     return False
 
 
+def component_valid_selection(comp_object: ComponentElement, cat_item: ComponentCatalogItem) -> bool:
+    if not cat_item.single_under_component:
+        return True
+    if not comp_object.under_components:
+        return False
+    if len(comp_object.under_components) != 1:
+        return False
+    return True
+
+
 def correct_quantity(under_component_list: list | None, current_quantitiy: int, component_id: int) -> int:
     # It is possible, that the User issued the negative UnderComponent for the component but set the
     # quantitiy to 1. This signals an inconsistent state to the app
@@ -111,6 +121,18 @@ def register_routes_api_inventory(app):
                     continue
 
                 if not component_valid(component):
+                    continue
+
+                if not component_valid_selection(component, comp_cat_item):
+                    if current_app.config["INI_CONFIG"].getboolean("Handling", "del_comp_without_selection",
+                                                                   fallback=False):
+                        try:
+                            wowi.delete_component(component.facility_id, component.id_)
+                            logger.warning(f"uu_current_data: Deleted component {component.id_} because of incorrect "
+                                           f"selection.")
+                        except Exception as e:
+                            logger.error(f"uu_current_data: Should delete comp {component.id_} but error occured: "
+                                         f"{str(e)}")
                     continue
 
                 if comp_cat_item.under_components:
