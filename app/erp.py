@@ -464,7 +464,9 @@ def create_component(
         component_status_id=dest_component_status,
         facility_id=facility_id,
         under_component_ids=sub_components,
-        comment=comment
+        comment=comment,
+        repair_relevance=bool(component_cat_item.is_repair_relevant),
+        lease_relevance=bool(component_cat_item.is_lease_relevant),
     )
     _raise_for_result("create_component", cr_f_result)
     logger.info(f"create_component: Use Unit '{puu_id}' "
@@ -691,7 +693,9 @@ def download_floor_plan(wowi: WowiPy, uu_id: int):
     # Es kann mehrere Grundrisse geben. Wir möchten den neusten ausgeben
     dest_media_entry = None
     for entry in uumedia:
-        if entry.picture_type_name == "Grundriss" or entry.remark == "Grundriss":
+        if (entry.picture_type_name == "Grundriss"
+                or entry.remark == "Grundriss"
+                or (entry.remark and "Grundriss" in entry.remark)):
             if not dest_media_entry:
                 dest_media_entry = entry
             else:
