@@ -107,6 +107,7 @@ def register_routes_api_contacts(app):
     @app.route("/app/use-unit/contacts/<int:use_unit_id>", methods=["GET"])
     @jwt_required()
     def app_uu_contact(use_unit_id):
+        fallback = jsonify({"contact_items": []})
         if current_app.config['DEMO_MODE']:
             return _json_from_file(current_app.config['DEMO_CONTACTS'])
 
@@ -125,13 +126,13 @@ def register_routes_api_contacts(app):
                 return retval
 
             if not contracts:
-                return abort(404)
+                return fallback
             the_contract: LicenseAgreement
             the_contract = contracts[0]
             if the_contract.restriction_of_use.is_vacancy:
-                return abort(404)
+                return fallback
             if not the_contract.contractors:
-                return abort(404)
+                return fallback
 
             contact_items = []
             contractor_entry: wowipy.wowipy.Contractor
@@ -256,7 +257,7 @@ def register_routes_api_contacts(app):
                 }
                 contact_items.append(contact_entry)
             if not contact_items:
-                return abort(404)
+                return fallback
             else:
                 return {
                     "contact_items": contact_items
