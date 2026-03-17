@@ -714,3 +714,34 @@ def download_floor_plan(wowi: WowiPy, uu_id: int):
             "file_name": dest_media_entry.file_name
         }
     return None
+
+
+def get_contracts_for_use_unit(use_unit_id: int, include_vacant: bool = False) -> list | None:
+    retval = []
+    wowi = get_wowi_client()
+    targs = {"useUnitId": use_unit_id}
+    contracts = wowi.get_license_agreements(add_args=targs, add_contractors=True)
+    for contract in contracts:
+        if contract.restriction_of_use.is_vacancy and not include_vacant:
+            continue
+        if contract.end_of_contract:
+            dt_end = None
+            if isinstance(contract.end_of_contract, datetime):
+                dt_end = contract.end_of_contract
+            elif isinstance(contract.end_of_contract, str):
+                try:
+                    dt_end = datetime.strptime(contract.end_of_contract, "%Y-%m-%d")
+                except ValueError:
+                    logger.error(f"get_contracts_for_use_unit: end date of contract {contract.id_} is invalid: "
+                                 f"{contract.end_of_contract}")
+                    continue
+            if not dt_end:
+                logger.error(f"get_contracts_for_use_unit: end date of contract {contract.id_} has invalid type: "
+                             f"{type(contract.end_of_contract)}")
+                continue
+
+            if datetime.now() > dt_end:
+                continue
+
+        retval.append(contract)
+    return retval

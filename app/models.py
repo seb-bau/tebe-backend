@@ -338,6 +338,7 @@ class CheckListItem(db.Model):
     ticket_content = db.Column(db.Text, nullable=True)
     dest_erp_user_id = db.Column(db.Integer, nullable=True)
     dest_erp_department_id = db.Column(db.Integer, nullable=True)
+    enable_dest_contract = db.Column(db.Boolean, default=True)
 
     check_list_id = db.Column(db.Integer, db.ForeignKey("check_list.id"), nullable=False)
 

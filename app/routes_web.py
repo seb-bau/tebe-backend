@@ -260,6 +260,7 @@ def register_routes_web(app):
         ticket_content = (request.form.get("ticket_content") or "").strip() or None
         dest_erp_user_id = request.form.get("dest_erp_user_id", type=int)
         dest_erp_department_id = request.form.get("dest_erp_department_id", type=int)
+        enable_dest_contract = "enable_dest_contract" in request.form
 
         if dest_erp_user_id:
             if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
@@ -288,6 +289,7 @@ def register_routes_web(app):
             ticket_content=ticket_content,
             dest_erp_user_id=dest_erp_user_id,
             dest_erp_department_id=dest_erp_department_id,
+            enable_dest_contract=enable_dest_contract,
             check_list_id=checklist.id,
         )
 
@@ -311,6 +313,7 @@ def register_routes_web(app):
         ticket_content = (request.form.get("ticket_content") or "").strip() or None
         dest_erp_user_id = request.form.get("dest_erp_user_id", type=int)
         dest_erp_department_id = request.form.get("dest_erp_department_id", type=int)
+        enable_dest_contract = "enable_dest_contract" in request.form
 
         if dest_erp_user_id:
             if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
@@ -330,6 +333,7 @@ def register_routes_web(app):
         item.ticket_content = ticket_content
         item.dest_erp_user_id = dest_erp_user_id
         item.dest_erp_department_id = dest_erp_department_id
+        item.enable_dest_contract = enable_dest_contract
 
         db.session.commit()
         flash("Checklisten-Item wurde aktualisiert.", "success")

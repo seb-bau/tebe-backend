@@ -67,29 +67,42 @@
                         <label class="form-label" for="ticket_subject_new">Ticket Betreff</label>
                         <input class="form-control" id="ticket_subject_new" name="ticket_subject">
                     </div>
-<div class="col-md-6">
-    <label class="form-label" for="dest_erp_user_id_new">Ziel Ansprechpartner</label>
-    <select class="form-select" id="dest_erp_user_id_new" name="dest_erp_user_id">
-        <option value="">-- Kein Ansprechpartner --</option>
-        {% for o in officials %}
-            <option value="{{ o.erp_user_id }}">
-                {{ o.name }}{% if o.short %} ({{ o.short }}){% endif %}
-            </option>
-        {% endfor %}
-    </select>
-</div>
+                    <div class="col-md-6">
+                    <div class="form-check mt-4">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               id="enable_dest_contract_new"
+                               name="enable_dest_contract"
+                               value="1"
+                               checked>
+                        <label class="form-check-label" for="enable_dest_contract_new">
+                            Vertrag standardmäßig verknüpft
+                        </label>
+                    </div>
+                </div>
+                    <div class="col-md-6">
+                    <label class="form-label" for="dest_erp_user_id_new">Ziel Ansprechpartner</label>
+                    <select class="form-select" id="dest_erp_user_id_new" name="dest_erp_user_id">
+                        <option value="">-- Kein Ansprechpartner --</option>
+                        {% for o in officials %}
+                            <option value="{{ o.erp_user_id }}">
+                                {{ o.name }}{% if o.short %} ({{ o.short }}){% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-<div class="col-md-6">
-    <label class="form-label" for="dest_erp_department_id_new">Ziel Abteilung</label>
-    <select class="form-select" id="dest_erp_department_id_new" name="dest_erp_department_id">
-        <option value="">-- Keine Abteilung --</option>
-        {% for d in departments %}
-            <option value="{{ d.id }}">
-                {{ d.name }}
-            </option>
-        {% endfor %}
-    </select>
-</div>
+                <div class="col-md-6">
+                    <label class="form-label" for="dest_erp_department_id_new">Ziel Abteilung</label>
+                    <select class="form-select" id="dest_erp_department_id_new" name="dest_erp_department_id">
+                        <option value="">-- Keine Abteilung --</option>
+                        {% for d in departments %}
+                            <option value="{{ d.id }}">
+                                {{ d.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
                     <div class="col-12">
                         <label class="form-label" for="ticket_content_new">Ticket Inhalt</label>
@@ -145,6 +158,20 @@
                                                 <input class="form-control" id="ticket_subject_{{ item.id }}" name="ticket_subject"
                                                        value="{{ item.ticket_subject or '' }}">
                                             </div>
+                                            <div class="col-md-6">
+                                            <div class="form-check mt-4">
+                                                <input class="form-check-input"
+                                                       type="checkbox"
+                                                       id="enable_dest_contract_{{ item.id }}"
+                                                       name="enable_dest_contract"
+                                                       value="1"
+                                                       {% if item.enable_dest_contract %}checked{% endif %}>
+                                                <label class="form-check-label" for="enable_dest_contract_{{ item.id }}">
+                                                    Vertrag standardmäßig verknüpft
+                                                </label>
+                                            </div>
+                                        </div>
+                                            <div class="col-md-6">
                                           <div class="col-md-6">
                                             <label class="form-label" for="dest_erp_user_id_{{ item.id }}">Ziel Ansprechpartner</label>
                                             <select class="form-select"

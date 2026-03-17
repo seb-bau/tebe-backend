@@ -7,7 +7,7 @@ from flask import request, jsonify, abort
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 
-from app.erp import get_responsible_official, get_wowi_client
+from app.erp import get_responsible_official, get_wowi_client, get_contracts_for_use_unit
 from wowipy.wowipy import WowiPy
 import wowipy.models
 from app.models import (ResponsibleOfficial, Department, CheckList, CheckListItem, User, EstatePictureType, MediaEntity,
@@ -21,6 +21,22 @@ logger = logging.getLogger()
 
 MAX_FILES = 20
 ALLOWED_EXT = {".jpg", ".jpeg", ".png"}
+
+
+def format_contracts(contracts: list[wowipy.models.LicenseAgreement]) -> list[dict]:
+    retval = []
+    for tcontract in contracts:
+        contractor_name = "Unbekannt"
+        for x in tcontract.contractors:
+            if x.contractor_type.name == "1. Vertragsnehmer":
+                contractor_name = x.person.name
+        contract_line = f"({tcontract.status_contract.name}) {tcontract.id_num} {contractor_name}"
+        new_entry = {
+            "id": tcontract.id_,
+            "name": contract_line
+        }
+        retval.append(new_entry)
+    return retval
 
 
 def allowed_filename(filename: str) -> bool:
@@ -46,6 +62,7 @@ def register_routes_api_ticket(app):
         use_unit_id = normalize_int(request.form.get("use_unit_id"))
         department_id = normalize_int(request.form.get("dest_department_id"))
         dest_user_id = normalize_int(request.form.get("dest_user_id"))
+        dest_contract_id = normalize_int(request.form.get("dest_contract_id"))
         is_floor_plan_change = bool(request.form.get("is_floor_plan_change"))
         temp_dir = os.path.join(tempfile.gettempdir(), "tebe_ticket_photos")
         os.makedirs(temp_dir, exist_ok=True)
@@ -80,11 +97,23 @@ def register_routes_api_ticket(app):
         if not ticket_source_id:
             return jsonify({"msg": "The server does not support sending tickets."}), 502
         use_unit_entity_id = current_app.config["INI_CONFIG"].get("OpenWowi", "use_unit_entity_id", fallback=None)
+        contract_entity_id = current_app.config["INI_CONFIG"].get("OpenWowi", "contract_entity_id", fallback=None)
 
-        main_assignment = wowipy.models.TicketAssignment(
+        uu_assignment = wowipy.models.TicketAssignment(
             assignment_entity_id=use_unit_entity_id,
             entity_id=use_unit_id
         )
+
+        if dest_contract_id and contract_entity_id:
+            main_assignment = wowipy.models.TicketAssignment(
+                assignment_entity_id=contract_entity_id,
+                entity_id=dest_contract_id
+            )
+
+            assignments = [uu_assignment]
+        else:
+            main_assignment = uu_assignment
+            assignments = None
 
         try:
             rslt = wowi.create_ticket(
@@ -92,7 +121,8 @@ def register_routes_api_ticket(app):
                 content=content,
                 source_id=ticket_source_id,
                 user_id=dest_user_id,
-                main_assignment=main_assignment
+                main_assignment=main_assignment,
+                assignments=assignments
             )
         except wowipy.wowipy.WowiPyException as e:
             logger.error(f"route_api_ticket_create: WowipyException while creating ticket: {str(e)}")
@@ -203,10 +233,17 @@ def register_routes_api_ticket(app):
             }
             r_officials.append(off_entry)
 
+        # If the app is transmitting a use unit id - present the current and following contract
+        contracts = []
+        uu_id = request.args.get("use_unit_id")
+        if uu_id:
+            contracts = format_contracts(get_contracts_for_use_unit(use_unit_id=int(uu_id)))
+
         return jsonify(
             {
                 "departments": r_departments,
-                "officials": r_officials
+                "officials": r_officials,
+                "contracts": contracts
             }
         )
 
@@ -244,7 +281,8 @@ def register_routes_api_ticket(app):
                 "ticket_subject": entry.ticket_subject,
                 "ticket_content": entry.ticket_content,
                 "dest_erp_user_id": entry.dest_erp_user_id,
-                "dest_erp_department_id": entry.dest_erp_department_id
+                "dest_erp_department_id": entry.dest_erp_department_id,
+                "enable_contract_connection": entry.enable_dest_contract
             }
             itemlist.append(new_item)
         retval = jsonify({
