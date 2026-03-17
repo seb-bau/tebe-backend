@@ -124,8 +124,10 @@ def register_routes_api_inventory(app):
                     continue
 
                 if not component_valid_selection(component, comp_cat_item):
-                    if current_app.config["INI_CONFIG"].getboolean("Handling", "del_comp_without_selection",
-                                                                   fallback=False):
+                    delete_option = current_app.config["INI_CONFIG"].getboolean(
+                        "Handling", "del_comp_without_selection",
+                        fallback=False)
+                    if delete_option:
                         try:
                             wowi.delete_component(component.facility_id, component.id_)
                             logger.warning(f"uu_current_data: Deleted component {component.id_} because of incorrect "
@@ -133,6 +135,9 @@ def register_routes_api_inventory(app):
                         except Exception as e:
                             logger.error(f"uu_current_data: Should delete comp {component.id_} but error occured: "
                                          f"{str(e)}")
+                    else:
+                        logger.warning(f"uu_current_data: Ignored component {component.id_} because of incorrect "
+                                       f"selection. Config Item: {delete_option}")
                     continue
 
                 if comp_cat_item.under_components:
