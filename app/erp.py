@@ -716,6 +716,21 @@ def download_floor_plan(wowi: WowiPy, uu_id: int):
     return None
 
 
+def download_photo(wowi: WowiPy, entity_name: str, media_id: int):
+    uumedia = wowi.get_media(entity_name="UseUnit", media_id=media_id)
+    if not uumedia:
+        return None
+    dest_media_entry = uumedia[0]
+    tmpdir = os.path.join(tempfile.gettempdir(), "tebe_photos")
+    os.makedirs(tmpdir, exist_ok=True)
+    file_path = os.path.join(tmpdir, dest_media_entry.file_name)
+    wowi.download_media(entity_name, dest_media_entry.file_guid, tmpdir, dest_media_entry.file_name)
+    return {
+        "file_path": file_path,
+        "file_name": dest_media_entry.file_name
+    }
+
+
 def get_contracts_for_use_unit(use_unit_id: int, include_vacant: bool = False) -> list | None:
     retval = []
     wowi = get_wowi_client()

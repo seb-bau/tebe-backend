@@ -67,12 +67,6 @@ def normalize_exif_orientation(path: str) -> None:
         fmt = (im.format or "JPEG").upper()
         logger.debug(f"normalize_exif_orientation: File '{path}' has format '{fmt}'")
 
-        if fmt not in ("JPEG", "JPG", "PNG"):
-            fmt = "JPEG"
-            im2 = im2.convert("RGB")
-
         if fmt in ("JPEG", "JPG"):
             im2 = im2.convert("RGB")
             im2.save(path, format="JPEG", quality=90, optimize=True)
-        else:
-            im2.save(path, format="PNG", optimize=True)

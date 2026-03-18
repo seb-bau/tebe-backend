@@ -1,12 +1,17 @@
 from flask import request, jsonify, abort
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from wowipy.wowipy import WowiPy
+from wowipy.models import UseUnit, MediaData
+
+from app.helpers import normalize_exif_orientation
 from app.models import User, ResponsibleOfficial
 from flask import current_app, send_file
-from app.erp import with_wowi_retry, download_floor_plan
+from app.erp import with_wowi_retry, download_floor_plan, get_wowi_client, download_photo
 from app.extensions import db
 from app.payloads import store_payload
 import logging
+import base64
+import mimetypes
 
 logger = logging.getLogger()
 
@@ -113,3 +118,87 @@ def register_routes_api_media(app):
             "plan_change_subject": plan_change_subject,
             "plan_change_content": plan_change_content
         })
+
+    @app.route("/app/use-unit/<int:use_unit_id>/photos", methods=["GET"])
+    @jwt_required()
+    def route_use_unit_photos_get(use_unit_id):
+        def handle_media_entries(media_entries: list, entity_name: str) -> list:
+            retmed = []
+            if not media_entries:
+                return []
+            media_entry: MediaData
+            for media_entry in media_entries:
+                temp_dir = os.path.join(tempfile.gettempdir(), "tebe_photos")
+                os.makedirs(temp_dir, exist_ok=True)
+                dest_file_name = f"{uuid.uuid4().hex}_{media_entry.thumb_name}"
+                full_dest_path = os.path.join(temp_dir, dest_file_name)
+                wowi.download_media(entity_name=entity_name,
+                                    file_guid=media_entry.thumb_guid,
+                                    dest_file_path=temp_dir,
+                                    dest_file_name=dest_file_name,
+                                    is_thumbnail=True)
+
+                normalize_exif_orientation(full_dest_path)
+
+                with open(full_dest_path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                mime_type, _ = mimetypes.guess_type(full_dest_path)
+
+                retmed.append({
+                    "id": media_entry.id_,
+                    "thumb_guid": media_entry.thumb_guid,
+                    "file_guid": media_entry.file_guid,
+                    "description": media_entry.remark,
+                    "date": media_entry.creation_date,
+                    "entity": entity_name,
+                    "thumb_base64":  encoded,
+                    "thumb_mime_type": mime_type or "application/octet-stream",
+                })
+            return retmed
+
+        fallback_return = jsonify({
+            "media_items": []
+        })
+        if current_app.config["DEMO_MODE"]:
+            return fallback_return, 200
+
+        wowi = get_wowi_client()
+        error_string = None
+        try:
+            uu_objects = wowi.get_use_units(use_unit_id=use_unit_id)
+        except Exception as e:
+            error_string = str(e)
+            uu_objects = None
+
+        if not uu_objects:
+            logger.error(f"use_unit_photos_get: Could not get use unit from wowipy: {error_string}")
+            return fallback_return
+        uu_object: UseUnit
+        uu_object = uu_objects[0]
+        building_id = uu_object.building_land.id_
+
+        media_for_uu = wowi.get_media(entity_name="UseUnit", entity_id=use_unit_id)
+        media_for_building = wowi.get_media(entity_name="Building", entity_id=building_id)
+        lst_uu = handle_media_entries(media_for_uu, "UseUnit")
+        lst_bld = handle_media_entries(media_for_building, "Building")
+        retlst = lst_uu + lst_bld
+        return jsonify(
+            {
+                "media_items": retlst
+            }
+        )
+
+    @app.route("/app/photo/<entity_name>/<int:media_id>", methods=["GET"])
+    @jwt_required()
+    def app_photo_get(entity_name, media_id):
+        if current_app.config['DEMO_MODE']:
+            return abort(404)
+
+        def _do_app_photo_get(wowi: WowiPy, ent_name: str, m_id: int):
+            photo_file = download_photo(wowi, ent_name, m_id)
+            if not photo_file:
+                return abort(404)
+            return send_file(photo_file["file_path"], download_name=photo_file["file_name"])
+
+        oretval = with_wowi_retry(_do_app_photo_get, entity_name, media_id)
+        return oretval
