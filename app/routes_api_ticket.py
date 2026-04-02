@@ -11,7 +11,7 @@ from app.erp import get_responsible_official, get_wowi_client, get_contracts_for
 from wowipy.wowipy import WowiPy
 import wowipy.models
 from app.models import (ResponsibleOfficial, Department, CheckList, CheckListItem, User, EstatePictureType, MediaEntity,
-                        EventItem)
+                        EventItem, ErpUseUnit, GeoBuilding)
 from flask import current_app
 import logging
 from app.extensions import db
@@ -65,6 +65,46 @@ def register_routes_api_ticket(app):
         dest_contract_id = normalize_int(request.form.get("dest_contract_id"))
         is_floor_plan_change = bool(request.form.get("is_floor_plan_change"))
         temp_dir = os.path.join(tempfile.gettempdir(), "tebe_ticket_photos")
+        checklist_item_id_raw = request.form.get("checklist_item_id") or None
+        checklist_item_id = None
+        connect_use_unit = True
+        dest_building_id = 0
+        dest_eco_unit_id = 0
+        the_use_unit: ErpUseUnit | None = None
+
+        if checklist_item_id_raw:
+            try:
+                checklist_item_id = int(checklist_item_id_raw)
+            except (ValueError, TypeError):
+                logger.error(f"route_api_ticket_create: Malformed checklist_item_id: '{checklist_item_id_raw}'")
+                return jsonify({"msg": "malformed item id"}), 400
+        if checklist_item_id:
+            checklist_item = db.session.get(CheckListItem, checklist_item_id)
+            if not checklist_item:
+                logger.error(f"route_api_ticket_create: Could not find checklist item '{checklist_item_id}'")
+                return jsonify({"msg": "cannot find item id"}), 400
+            if not checklist_item.connect_use_unit:
+                connect_use_unit = False
+            if checklist_item.connect_building:
+                the_use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_id).first()
+                if not the_use_unit:
+                    logger.error(f"ticket_create: Should connect building but cannot find uu '{use_unit_id}'")
+                else:
+                    dest_building_id = the_use_unit.erp_building_id
+            if checklist_item.connect_eco_unit:
+                if the_use_unit is None:
+                    the_use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_id).first()
+                if not the_use_unit:
+                    logger.error(f"route_api_ticket_create: Should connect eco unit but cannot find uu '{use_unit_id}'")
+                else:
+                    the_building = db.session.query(GeoBuilding).filter(
+                        GeoBuilding.erp_id == the_use_unit.erp_building_id).first()
+                    if not the_building:
+                        logger.error(f"tickt_create: Should connect eco unit but cannot find building "
+                                     f"'{the_use_unit.erp_building_id}'")
+                    else:
+                        dest_eco_unit_id = the_building.erp_eco_unit_id
+
         os.makedirs(temp_dir, exist_ok=True)
         subject = request.form.get("subject")
         content = request.form.get("content")
@@ -96,24 +136,66 @@ def register_routes_api_ticket(app):
         ticket_source_id = current_app.config["INI_CONFIG"].get("OpenWowi", "ticket_source_id", fallback=None)
         if not ticket_source_id:
             return jsonify({"msg": "The server does not support sending tickets."}), 502
-        use_unit_entity_id = current_app.config["INI_CONFIG"].get("OpenWowi", "use_unit_entity_id", fallback=None)
-        contract_entity_id = current_app.config["INI_CONFIG"].get("OpenWowi", "contract_entity_id", fallback=None)
+        use_unit_entity_id = current_app.config["INI_CONFIG"].getint("OpenWowi", "use_unit_entity_id", fallback=0)
+        contract_entity_id = current_app.config["INI_CONFIG"].getint("OpenWowi", "contract_entity_id", fallback=0)
+        building_entity_id = current_app.config["INI_CONFIG"].getint("OpenWowi", "building_entity_id", fallback=0)
+        eco_unit_entity_id = current_app.config["INI_CONFIG"].getint("OpenWowi", "eco_unit_entity_id", fallback=0)
 
-        uu_assignment = wowipy.models.TicketAssignment(
-            assignment_entity_id=use_unit_entity_id,
-            entity_id=use_unit_id
-        )
+        active_assignments = []
+
+        # Priorität:
+        # 1. contract_id
+        # 2. use_unit_id (wenn erlaubt)
+        # 3. building_id
+        # 4. eco_unit_id
 
         if dest_contract_id and contract_entity_id:
-            main_assignment = wowipy.models.TicketAssignment(
-                assignment_entity_id=contract_entity_id,
-                entity_id=dest_contract_id
+            active_assignments.append(
+                wowipy.models.TicketAssignment(
+                    assignment_entity_id=contract_entity_id,
+                    entity_id=dest_contract_id
+                )
             )
 
-            assignments = [uu_assignment]
-        else:
-            main_assignment = uu_assignment
+        if connect_use_unit and use_unit_id and use_unit_entity_id:
+            active_assignments.append(
+                wowipy.models.TicketAssignment(
+                    assignment_entity_id=use_unit_entity_id,
+                    entity_id=use_unit_id
+                )
+            )
+
+        if dest_building_id and building_entity_id:
+            active_assignments.append(
+                wowipy.models.TicketAssignment(
+                    assignment_entity_id=building_entity_id,
+                    entity_id=dest_building_id
+                )
+            )
+
+        if dest_eco_unit_id and eco_unit_entity_id:
+            active_assignments.append(
+                wowipy.models.TicketAssignment(
+                    assignment_entity_id=eco_unit_entity_id,
+                    entity_id=dest_eco_unit_id
+                )
+            )
+
+        # Fallback: es MUSS ein main_assignment geben
+        if not active_assignments:
+            logger.error(
+                "route_api_ticket_create: No active assignment found, "
+                f"falling back to use_unit_id={use_unit_id} as main_assignment"
+            )
+
+            main_assignment = wowipy.models.TicketAssignment(
+                assignment_entity_id=use_unit_entity_id,
+                entity_id=use_unit_id
+            )
             assignments = None
+        else:
+            main_assignment = active_assignments[0]
+            assignments = active_assignments[1:] or None
 
         try:
             rslt = wowi.create_ticket(

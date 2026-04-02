@@ -423,6 +423,9 @@ class CheckListItem(db.Model):
     dest_erp_user_id = db.Column(db.Integer, nullable=True)
     dest_erp_department_id = db.Column(db.Integer, nullable=True)
     enable_dest_contract = db.Column(db.Boolean, default=True)
+    connect_building = db.Column(db.Boolean, default=False, nullable=True)
+    connect_eco_unit = db.Column(db.Boolean, default=False, nullable=True)
+    connect_use_unit = db.Column(db.Boolean, default=True, nullable=True)
 
     check_list_id = db.Column(db.Integer, db.ForeignKey("check_list.id"), nullable=False)
 

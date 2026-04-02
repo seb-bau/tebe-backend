@@ -79,6 +79,39 @@
                             Vertrag standardmäßig verknüpft
                         </label>
                     </div>
+                    <div class="form-check mt-4">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="connect_building_new"
+                           name="connect_building"
+                           value="1"
+                           >
+                    <label class="form-check-label" for="connect_building_new">
+                        Gebäude immer im Ticket verknüpfen
+                    </label>
+                </div>
+                <div class="form-check mt-4">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="connect_eco_unit_new"
+                           name="connect_eco_unit"
+                           value="1"
+                           >
+                    <label class="form-check-label" for="connect_eco_unit_new">
+                        Wirtschaftseinheit immer im Ticket verknüpfen
+                    </label>
+                </div>
+                <div class="form-check mt-4">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           id="connect_use_unit_new"
+                           name="connect_use_unit"
+                           value="1"
+                           checked>
+                    <label class="form-check-label" for="connect_use_unit_new">
+                        Nutzungseinheit immer im Ticket verknüpfen (empfohlen)
+                    </label>
+                </div>
                 </div>
                     <div class="col-md-6">
                     <label class="form-label" for="dest_erp_user_id_new">Ziel Ansprechpartner</label>
@@ -169,6 +202,39 @@
                                                 <label class="form-check-label" for="enable_dest_contract_{{ item.id }}">
                                                     Vertrag standardmäßig verknüpft
                                                 </label>
+                                            </div>
+                                            <div class="form-check mt-4">
+                                            <input class="form-check-input"
+                                                   type="checkbox"
+                                                   id="connect_building_{{ item.id }}"
+                                                   name="connect_building"
+                                                   value="1"
+                                                   {% if item.connect_building %}checked{% endif %}>
+                                            <label class="form-check-label" for="connect_building_{{ item.id }}">
+                                                Gebäude immer im Ticket verknüpfen
+                                            </label>
+                                            </div>
+                                            <div class="form-check mt-4">
+                                            <input class="form-check-input"
+                                                   type="checkbox"
+                                                   id="connect_eco_unit_{{ item.id }}"
+                                                   name="connect_eco_unit"
+                                                   value="1"
+                                                   {% if item.connect_eco_unit %}checked{% endif %}>
+                                            <label class="form-check-label" for="connect_eco_unit_{{ item.id }}">
+                                                Wirtschaftseinheit immer im Ticket verknüpfen
+                                            </label>
+                                            </div>
+                                            <div class="form-check mt-4">
+                                            <input class="form-check-input"
+                                                   type="checkbox"
+                                                   id="connect_use_unit_{{ item.id }}"
+                                                   name="connect_use_unit"
+                                                   value="1"
+                                                   {% if item.connect_use_unit %}checked{% endif %}>
+                                            <label class="form-check-label" for="connect_use_unit_{{ item.id }}">
+                                                Nutzungseinheit immer im Ticket verknüpfen (empfohlen)
+                                            </label>
                                             </div>
                                         </div>
                                             <div class="col-md-6">

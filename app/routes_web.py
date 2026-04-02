@@ -261,6 +261,9 @@ def register_routes_web(app):
         dest_erp_user_id = request.form.get("dest_erp_user_id", type=int)
         dest_erp_department_id = request.form.get("dest_erp_department_id", type=int)
         enable_dest_contract = "enable_dest_contract" in request.form
+        connect_building = "connect_building" in request.form
+        connect_eco_unit = "connect_eco_unit" in request.form
+        connect_use_unit = "connect_use_unit" in request.form
 
         if dest_erp_user_id:
             if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
@@ -290,6 +293,9 @@ def register_routes_web(app):
             dest_erp_user_id=dest_erp_user_id,
             dest_erp_department_id=dest_erp_department_id,
             enable_dest_contract=enable_dest_contract,
+            connect_building=connect_building,
+            connect_eco_unit=connect_eco_unit,
+            connect_use_unit=connect_use_unit,
             check_list_id=checklist.id,
         )
 
@@ -314,6 +320,9 @@ def register_routes_web(app):
         dest_erp_user_id = request.form.get("dest_erp_user_id", type=int)
         dest_erp_department_id = request.form.get("dest_erp_department_id", type=int)
         enable_dest_contract = "enable_dest_contract" in request.form
+        connect_building = "connect_building" in request.form
+        connect_eco_unit = "connect_eco_unit" in request.form
+        connect_use_unit = "connect_use_unit" in request.form
 
         if dest_erp_user_id:
             if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
@@ -334,6 +343,9 @@ def register_routes_web(app):
         item.dest_erp_user_id = dest_erp_user_id
         item.dest_erp_department_id = dest_erp_department_id
         item.enable_dest_contract = enable_dest_contract
+        item.connect_building = connect_building
+        item.connect_eco_unit = connect_eco_unit
+        item.connect_use_unit = connect_use_unit
 
         db.session.commit()
         flash("Checklisten-Item wurde aktualisiert.", "success")

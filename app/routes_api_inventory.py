@@ -202,7 +202,7 @@ def register_routes_api_inventory(app):
                     "single_under_component": comp_cat_item.single_under_component,
                     "hide_quantity": comp_cat_item.hide_quantity,
                     "comment": component.comment,
-                    # "hint": comp_cat_item.hint
+                    "hint": comp_cat_item.hint
                 })
                 found_types.append(comp_cat_item.id)
 
@@ -227,7 +227,7 @@ def register_routes_api_inventory(app):
                         "is_bool": cat_item.is_bool,
                         "single_under_component": cat_item.single_under_component,
                         "hide_quantity": cat_item.hide_quantity,
-                        # "hint": cat_item.hint
+                        "hint": cat_item.hint
                     })
 
             return {
