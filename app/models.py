@@ -1,6 +1,39 @@
 from .extensions import db, bcrypt
-from sqlalchemy import func
+from sqlalchemy import func, Enum as SqlEnum
 from flask_login import UserMixin
+from enum import Enum
+
+
+class UseUnitType(Enum):
+    APARTMENT = 'Apartment'
+    COMMERCIAL = 'Commercial'
+    GARAGE = 'Garage'
+    PARKING = 'Parking'
+    OTHER = 'Other'
+
+
+class BuildingType(Enum):
+    LIVING = 'Living'
+    OFFICE = 'Office'
+    PARKING = 'Parking'
+    OTHER = 'Other'
+
+
+component_use_unit_type = db.Table(
+    "component_use_unit_type",
+    db.Column(
+        "component_id",
+        db.Integer,
+        db.ForeignKey("component_catalog_item.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "use_unit_type_id",
+        db.Integer,
+        db.ForeignKey("use_unit_type_item.id"),
+        primary_key=True,
+    ),
+)
 
 
 component_undercomponent = db.Table(
@@ -35,6 +68,23 @@ component_role = db.Table(
         primary_key=True,
     ),
 )
+
+
+class UseUnitTypeItem(db.Model):
+    __tablename__ = "use_unit_type_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(SqlEnum(UseUnitType), nullable=False, unique=True)
+
+    components = db.relationship(
+        "ComponentCatalogItem",
+        secondary="component_use_unit_type",
+        back_populates="valid_use_unit_types",
+    )
+
+    @property
+    def display_name(self):
+        return self.code.value if self.code else None
 
 
 class Role(db.Model):
@@ -105,8 +155,35 @@ class GeoBuilding(db.Model):
     erp_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
     erp_idnum = db.Column(db.String(100), nullable=False)
     erp_eco_unit_id = db.Column(db.Integer, nullable=True)
-    lat = db.Column(db.String(50), nullable=False)
-    lon = db.Column(db.String(50), nullable=False)
+    lat = db.Column(db.String(50), nullable=True)
+    lon = db.Column(db.String(50), nullable=True)
+    street = db.Column(db.String(250), nullable=True)
+    street_complete = db.Column(db.String(250), nullable=True)
+    postcode = db.Column(db.String(50), nullable=True)
+    town = db.Column(db.String(100), nullable=True)
+    building_type = db.Column(SqlEnum(BuildingType), nullable=True)
+
+
+class ErpUseUnit(db.Model):
+    __tablename__ = "erp_use_unit"
+
+    id = db.Column(db.Integer, primary_key=True)
+    use_unit_type = db.Column(SqlEnum(UseUnitType), nullable=True)
+    erp_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
+    erp_idnum = db.Column(db.String(100), nullable=False)
+    erp_building_id = db.Column(db.Integer, nullable=False)
+    erp_eco_unit_id = db.Column(db.Integer, nullable=False)
+    erp_contract_id = db.Column(db.Integer, nullable=True)
+    erp_contract_idnum = db.Column(db.String(100), nullable=True)
+    contract_start = db.Column(db.String(100), nullable=True)
+    contract_end = db.Column(db.String(100), nullable=True)
+    is_vacancy = db.Column(db.Boolean, default=False, nullable=True)
+    is_cancelled = db.Column(db.Boolean, default=False, nullable=True)
+    contractor_last_name_1 = db.Column(db.String(200), nullable=True)
+    contractor_first_name_1 = db.Column(db.String(200), nullable=True)
+    contractor_last_name_2 = db.Column(db.String(200), nullable=True)
+    contractor_first_name_2 = db.Column(db.String(200), nullable=True)
+    description_of_position = db.Column(db.String(200), nullable=True)
 
 
 class Department(db.Model):
@@ -191,6 +268,7 @@ class ComponentCatalogItem(db.Model):
     is_bool = db.Column(db.Boolean, default=False)
     single_under_component = db.Column(db.Boolean, default=False)
     hide_quantity = db.Column(db.Boolean, default=False)
+    hint = db.Column(db.Text, nullable=True)
 
     # connections
     facility_catalog_item_id = db.Column(
@@ -213,6 +291,12 @@ class ComponentCatalogItem(db.Model):
     roles = db.relationship(
         "Role",
         secondary="component_role",
+        back_populates="components",
+    )
+
+    valid_use_unit_types = db.relationship(
+        "UseUnitTypeItem",
+        secondary="component_use_unit_type",
         back_populates="components",
     )
 

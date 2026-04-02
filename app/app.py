@@ -88,7 +88,7 @@ def create_app():
     register_routes_api_ticket(tapp)
     register_cli_commands(tapp)
 
-    from app.models import User
+    from app.models import User, UseUnitType, UseUnitTypeItem
 
     @login_manager.user_loader
     def load_user(user_id):

@@ -3,12 +3,10 @@ import os
 from datetime import datetime
 import re
 from app.extensions import db
-from app.models import User, ComponentCatalogItem, EstatePictureType, MediaEntity, EventItem
+from app.models import User, ComponentCatalogItem, EstatePictureType, MediaEntity, EventItem, ErpUseUnit, GeoBuilding
 from app.helpers import normalize_exif_orientation
 from wowipy.wowipy import WowiPy, MediaData, FileData
 from app.erp import create_facility, create_component, edit_component, with_wowi_retry, WowiPermanentError
-from wowicache.models import WowiCache, UseUnit, Building
-from flask import current_app
 
 logger = logging.getLogger()
 
@@ -121,15 +119,14 @@ def register_tasks(celery):
 
                 entity_idnum = None
                 try:
-                    cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
                     if entity_type_name == "UseUnit":
-                        cache_uu = cache.session.get(UseUnit, entity_id)
-                        if cache_uu:
-                            entity_idnum = cache_uu.id_num
+                        uu = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == entity_id).first()
+                        if uu:
+                            entity_idnum = uu.erp_idnum
                     elif entity_type_name == "Building":
-                        cache_buil = cache.session.get(Building, entity_id)
-                        if cache_buil:
-                            entity_idnum = cache_buil.id_num
+                        buil = db.session.query(GeoBuilding).filter(GeoBuilding.erp_id == entity_id).first()
+                        if buil:
+                            entity_idnum = buil.erp_idnum
                 except Exception as ex:
                     logger.error(f"upload_erp_photo: Error while collecting event data: {str(ex)}")
 

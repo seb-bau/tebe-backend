@@ -1,6 +1,6 @@
 from app.models import GeoBuilding
-from wowicache.models import WowiCache, Building
 from flask import current_app
+from sqlalchemy import or_
 from app.extensions import db
 import requests
 from urllib.parse import urlencode
@@ -42,6 +42,8 @@ def get_buildings_in_radius_m(center_lat, center_lon, radius_m):
     result = []
 
     for geo in geolocations:
+        if not geo.lat or not geo.lon:
+            continue
         distance_m = haversine_distance_m(
             center_lat, center_lon,
             float(geo.lat), float(geo.lon)
@@ -96,12 +98,13 @@ def geocode_address(address: str, api_key: str) -> tuple[str, str] | tuple[None,
 def update_geolocation():
     logger.debug("update_geolocation start")
     with current_app.app_context():
-        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
         geo_api_key = current_app.config['INI_CONFIG'].get("Geolocation", "api_key")
-        building: Building
-        buildings = cache.session.query(Building).all()
+        building: GeoBuilding
+        buildings = db.session.query(GeoBuilding).filter(or_(
+            GeoBuilding.lat.is_(None), GeoBuilding.lon.is_(None))
+        ).all()
         if not buildings:
-            logger.error(f"update_geolocation: No buildings in cache. Aborting.")
+            logger.error(f"update_geolocation: No buildings. Aborting.")
             return False
         buildings_total = len(buildings)
         building_counter = 0
@@ -115,39 +118,15 @@ def update_geolocation():
                 last_reported = progress
                 print(f"update_geolocation progress: {progress} %")
                 logger.debug(f"update_geolocation progress: {progress} %")
-            if building.building_type_name != "Mehrfamilienhaus":
-                continue
-            existing: GeoBuilding
-            existing = db.session.query(GeoBuilding).filter(GeoBuilding.erp_id == building.internal_id).first()
 
-            building_address = f"{building.street_complete} {building.postcode}  {building.town}"
-            if existing:
-                if existing.lat is None or existing.lon is None:
-                    lat, lon = geocode_address(building_address, geo_api_key)
-                    if not lat:
-                        print(f"No Geolocation for {building_address}")
-                        continue
-                else:
-                    lat = existing.lat
-                    lon = existing.lon
-                existing.erp_idnum = building.id_num
-                existing.erp_eco_unit_id = building.economic_unit_id
-                existing.lat = lat
-                existing.lon = lon
-            else:
-                lat, lon = geocode_address(building_address, geo_api_key)
-                if not lat:
-                    print(f"No Geolocation for {building_address}")
-                    continue
-                new_geo = GeoBuilding(
-                    erp_id=building.internal_id,
-                    erp_idnum=building.id_num,
-                    erp_eco_unit_id=building.economic_unit_id,
-                    lat=lat,
-                    lon=lon
-                )
-                update_counter += 1
-                db.session.add(new_geo)
+            building_address = f"{building.street_complete} {building.postcode} {building.town}"
+            lat, lon = geocode_address(building_address, geo_api_key)
+            if not lat:
+                print(f"No Geolocation for {building_address}")
+                continue
+            building.lat = lat
+            building.lon = lon
+            update_counter += 1
             db.session.commit()
         success_message = f"update_geolocation finished. Total buildings: {buildings_total}. Updated: {update_counter}"
         logger.info(success_message)

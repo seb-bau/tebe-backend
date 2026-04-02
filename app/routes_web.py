@@ -1,12 +1,12 @@
 from flask import render_template, request, flash, abort, redirect, url_for
 from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem
-from app.models import EventItem, Department, ResponsibleOfficial, CheckList, CheckListItem
+from app.models import (EventItem, Department, ResponsibleOfficial, CheckList, CheckListItem, ErpUseUnit,
+                        UseUnitTypeItem)
 from app.extensions import db
 from flask import current_app
 from flask_login import login_required, current_user
 from functools import wraps
 from sqlalchemy import or_
-from wowicache.models import WowiCache, UseUnit
 from datetime import datetime, timedelta, time, timezone
 import logging
 from sqlalchemy import func
@@ -690,6 +690,7 @@ def register_routes_web(app):
         page = request.args.get("page", 1, type=int)
         q = (request.args.get("q") or "").strip()
         status_filter = request.args.get("status")  # "active", "inactive" or None
+        selected_use_unit_type_id = request.args.get("use_unit_type_id", type=int)
 
         query = ComponentCatalogItem.query.join(FacilityCatalogItem, isouter=True)
 
@@ -700,6 +701,7 @@ def register_routes_web(app):
                     ComponentCatalogItem.name.ilike(like),
                     ComponentCatalogItem.custom_name.ilike(like),
                     ComponentCatalogItem.comment.ilike(like),
+                    ComponentCatalogItem.hint.ilike(like),
                     FacilityCatalogItem.name.ilike(like),
                     FacilityCatalogItem.custom_name.ilike(like),
                 )
@@ -710,10 +712,17 @@ def register_routes_web(app):
         elif status_filter == "inactive":
             query = query.filter(ComponentCatalogItem.enabled.is_(False))
 
-        query = query.order_by(ComponentCatalogItem.name.asc())
+        if selected_use_unit_type_id:
+            query = query.join(ComponentCatalogItem.valid_use_unit_types).filter(
+                UseUnitTypeItem.id == selected_use_unit_type_id
+            )
+
+        query = query.distinct().order_by(ComponentCatalogItem.name.asc())
 
         pagination = query.paginate(page=page, per_page=25, error_out=False)
         components = pagination.items
+
+        use_unit_type_items = UseUnitTypeItem.query.order_by(UseUnitTypeItem.id.asc()).all()
 
         return render_template(
             "admin/components_list.html",
@@ -721,6 +730,8 @@ def register_routes_web(app):
             pagination=pagination,
             q=q,
             status_filter=status_filter,
+            use_unit_type_items=use_unit_type_items,
+            selected_use_unit_type_id=selected_use_unit_type_id,
         )
 
     @app.route("/admin/components/<int:component_id>/edit", methods=["GET", "POST"])
@@ -735,11 +746,17 @@ def register_routes_web(app):
             single_under_component = bool(request.form.get("single_under_component"))
             hide_quantity = bool(request.form.get("hide_quantity"))
             custom_name = request.form.get("custom_name") or None
+            hint = request.form.get("hint") or None
+
             role_ids = request.form.getlist("role_ids")
             under_component_ids = request.form.getlist("under_component_ids")
+            valid_use_unit_type_ids = request.form.getlist("valid_use_unit_type_ids")
 
             if is_bool and single_under_component:
-                flash("Wenn bool ausgewählt wird, kann nicht zeitgleich Single Sub aktiviert sein.", category="error")
+                flash(
+                    "Wenn bool ausgewählt wird, kann nicht zeitgleich Single Sub aktiviert sein.",
+                    category="error",
+                )
                 return redirect(url_for("admin_components_list"))
 
             selected_under_components = []
@@ -748,17 +765,25 @@ def register_routes_web(app):
                     UnderComponentItem.id.in_(under_component_ids)
                 ).all()
 
+            selected_roles = []
+            if role_ids:
+                selected_roles = Role.query.filter(Role.id.in_(role_ids)).all()
+
+            selected_use_unit_types = []
+            if valid_use_unit_type_ids:
+                selected_use_unit_types = UseUnitTypeItem.query.filter(
+                    UseUnitTypeItem.id.in_(valid_use_unit_type_ids)
+                ).all()
+
             component.enabled = enabled
             component.custom_name = custom_name
             component.is_bool = is_bool
             component.single_under_component = single_under_component
             component.hide_quantity = hide_quantity
+            component.hint = hint
             component.under_components = selected_under_components
-
-            selected_roles = []
-            if role_ids:
-                selected_roles = Role.query.filter(Role.id.in_(role_ids)).all()
             component.roles = selected_roles
+            component.valid_use_unit_types = selected_use_unit_types
 
             db.session.commit()
             flash("Merkmal wurde aktualisiert.", "success")
@@ -766,11 +791,14 @@ def register_routes_web(app):
 
         roles = Role.query.order_by(Role.name.asc()).all()
         under_components = UnderComponentItem.query.order_by(UnderComponentItem.name.asc()).all()
+        use_unit_type_items = UseUnitTypeItem.query.order_by(UseUnitTypeItem.code.asc()).all()
+
         return render_template(
             "admin/component_form.html",
             component=component,
             roles=roles,
             under_components=under_components,
+            use_unit_type_items=use_unit_type_items,
         )
 
     # -------------------------
@@ -839,7 +867,6 @@ def register_routes_web(app):
     @app.route("/admin/events")
     @admin_required
     def admin_events_list():
-        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
         page = request.args.get("page", 1, type=int)
         date_from = (request.args.get("date_from") or "").strip()
         date_to = (request.args.get("date_to") or "").strip()
@@ -911,11 +938,11 @@ def register_routes_web(app):
                         sc_names.append(under_component_map.get(int(part), part))
                     elif part:
                         sc_names.append(part)
-            use_unit: UseUnit
-            use_unit = cache.session.query(UseUnit).filter(UseUnit.internal_id == e.use_unit_id).first()
+            use_unit: ErpUseUnit
+            use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == e.use_unit_id).first()
             uu_idnum: str | None
             if use_unit:
-                uu_idnum = use_unit.id_num
+                uu_idnum = use_unit.erp_idnum
                 if use_unit_idnum:
                     if not uu_idnum.startswith(use_unit_idnum):
                         continue

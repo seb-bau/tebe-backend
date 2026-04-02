@@ -1,8 +1,9 @@
 import click
 from app.extensions import db
-from app.models import User
+from app.models import User, UseUnitType, UseUnitTypeItem
 from app.geo import update_geolocation, get_buildings_in_radius_m
-from app.erp import sync_erp_data, sync_erp_department_data
+from app.erp import (sync_erp_data, sync_erp_department_data, sync_erp_use_unit_data, sync_erp_building_data,
+                     sync_erp_component_facility_catalog)
 from app.entra_sync import sync_entra_users
 
 
@@ -83,7 +84,30 @@ def register_cli_commands(app):
         results = sync_erp_department_data()
         click.echo(f"Result: {results}")
 
+    @app.cli.command("sync-erp-use-units")
+    def cli_sync_erp_use_units():
+        results = sync_erp_use_unit_data()
+        click.echo(f"Result: {results}")
+
+    @app.cli.command("sync-erp-buildings")
+    def cli_sync_erp_buildings():
+        results = sync_erp_building_data()
+        click.echo(f"Result: {results}")
+
     @app.cli.command("sync-entra-users")
     def cli_sync_entra_users():
         results = sync_entra_users(app)
         click.echo(f"Result: {results}")
+
+    @app.cli.command("sync-erp-facility-component-catalog")
+    def cli_sync_facility_component_catalog():
+        results = sync_erp_component_facility_catalog()
+        click.echo(f"Result: {results}")
+
+    @app.cli.command("seed-use-unit-types")
+    def cli_seed_use_unit_types():
+        for unit_type in UseUnitType:
+            exists = UseUnitTypeItem.query.filter_by(code=unit_type).first()
+            if not exists:
+                db.session.add(UseUnitTypeItem(code=unit_type))
+        db.session.commit()

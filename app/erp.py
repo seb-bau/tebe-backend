@@ -1,17 +1,18 @@
 import wowipy.models
 from wowipy.wowipy import WowiPy, Result
 from wowipy.models import (FacilityCatalogElement, ComponentCatalogElement, UnderComponentCatalogElement,
-                           FacilityElement)
+                           FacilityElement, Contractor, LicenseAgreement)
+from wowipy.models import UseUnit as WowiUseUnit, BuildingLand as WowiBuildingLand
 from flask import current_app
 import logging
 from app.extensions import db
 from app.models import (FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem,
-                        EstatePictureType, MediaEntity, Department, ResponsibleOfficial)
+                        EstatePictureType, MediaEntity, Department, ResponsibleOfficial, ErpUseUnit, UseUnitType,
+                        BuildingType, GeoBuilding)
 from threading import Lock
 from datetime import datetime
 import re
 import os
-from wowicache.models import WowiCache, UseUnit
 import tempfile
 
 logger = logging.getLogger()
@@ -383,6 +384,8 @@ def sync_departments(wowi: WowiPy):
 
 def sync_erp_data():
     wowi = get_wowi_client()
+    sync_use_units(wowi)
+    sync_buildings(wowi)
     sync_facility_catalog(wowi)
     sync_facility_items(wowi)
     sync_component_catalog(wowi)
@@ -395,6 +398,24 @@ def sync_erp_data():
 def sync_erp_department_data():
     wowi = get_wowi_client()
     sync_departments(wowi)
+
+
+def sync_erp_use_unit_data():
+    wowi = get_wowi_client()
+    sync_use_units(wowi)
+
+
+def sync_erp_building_data():
+    wowi = get_wowi_client()
+    sync_buildings(wowi)
+
+
+def sync_erp_component_facility_catalog():
+    wowi = get_wowi_client()
+    sync_facility_catalog(wowi)
+    sync_component_catalog(wowi)
+    sync_under_component_catalog(wowi)
+    sync_facility_items(wowi)
 
 
 def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) -> int:
@@ -413,12 +434,12 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
     logger.info(f"create_facility: Use Unit '{use_unit_id}' "
                 f"facility '{cr_f_result.data['Id']}' with name '{facility_cat_item.name}' created. ")
 
-    new_facility_for_cache = FacilityItem(
+    new_facility_for_db = FacilityItem(
         id=cr_f_result.data["Id"],
         name=facility_cat_item.name,
         facility_catalog_item_id=facility_cat_item.id
     )
-    db.session.add(new_facility_for_cache)
+    db.session.add(new_facility_for_db)
     db.session.commit()
     return cr_f_result.data["Id"]
 
@@ -484,10 +505,9 @@ def create_component(
                 sub_component_names.append(tsub_obj.name)
             sub_names = ",".join(sub_component_names)
             sub_names = sub_names[:250]
-        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
-        cache_uu = cache.session.get(UseUnit, puu_id)
-        if cache_uu:
-            uu_idnum = cache_uu.id_num
+        uu = db.session.get(ErpUseUnit, puu_id)
+        if uu:
+            uu_idnum = uu.id_num
 
     except Exception as e:
         logger.error(f"create_component: Error while getting event info: {str(e)}")
@@ -569,10 +589,9 @@ def edit_component(
                 sub_component_names.append(tsub_obj.name)
             sub_names = ",".join(sub_component_names)
             sub_names = sub_names[:250]
-        cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
-        cache_uu = cache.session.get(UseUnit, the_component.use_unit_id)
-        if cache_uu:
-            uu_idnum = cache_uu.id_num
+        uu = db.session.get(ErpUseUnit, the_component.use_unit_id)
+        if uu:
+            uu_idnum = uu.id_num
 
     except Exception as e:
         logger.error(f"edit_component: Error while collecting event info: {str(e)}")
@@ -666,12 +685,11 @@ def edit_component(
 
 
 def get_responsible_official(wowi: WowiPy, use_unit_id: int, department_id: int) -> ResponsibleOfficial | None:
-    cache = WowiCache(current_app.config['INI_CONFIG'].get("Wowicache", "connection_uri"))
-    cache_uu = cache.session.get(UseUnit, use_unit_id)
-    if not cache_uu:
-        logger.error(f"get_responsible_official: UseUnit '{use_unit_id}' not found in cache")
+    uu = db.session.get(ErpUseUnit, use_unit_id)
+    if not uu:
+        logger.error(f"get_responsible_official: UseUnit '{use_unit_id}' not found in db")
         return None
-    eco_unit_id = cache_uu.economic_unit_id
+    eco_unit_id = uu.erp_eco_unit_id
     eco_unit_jur = wowi.get_economic_unit_jurisdictions(economic_unit_id=eco_unit_id)
     if not eco_unit_jur:
         logger.error(f"get_responsible_official: No jurisdiction entry for eco unit '{eco_unit_id}'")
@@ -731,13 +749,13 @@ def download_photo(wowi: WowiPy, entity_name: str, media_id: int):
     }
 
 
-def get_contracts_for_use_unit(use_unit_id: int, include_vacant: bool = False) -> list | None:
+def get_contracts_for_use_unit(use_unit_id: int, include_vacancy: bool = False) -> list | None:
     retval = []
     wowi = get_wowi_client()
     targs = {"useUnitId": use_unit_id}
     contracts = wowi.get_license_agreements(add_args=targs, add_contractors=True)
     for contract in contracts:
-        if contract.restriction_of_use.is_vacancy and not include_vacant:
+        if contract.restriction_of_use.is_vacancy and not include_vacancy:
             continue
         if contract.end_of_contract:
             dt_end = None
@@ -760,3 +778,227 @@ def get_contracts_for_use_unit(use_unit_id: int, include_vacant: bool = False) -
 
         retval.append(contract)
     return retval
+
+
+def get_contractors_for_use_unit(wowi: WowiPy, use_unit_id_num: str) \
+        -> tuple[None, None] | tuple[list[Contractor] | None, LicenseAgreement]:
+    contract = wowi.get_license_agreements(use_unit_idnum=use_unit_id_num,
+                                           license_agreement_active_on=datetime.now())
+    if not contract:
+        msg = f"get_contractors_for_use_unit: Cannot find contract for use unit '{use_unit_id_num}'"
+        logger.warning(msg)
+        print(msg)
+        return None, None
+
+    if len(contract) > 1:
+        msg = f"get_contractors_for_use_unit: More than one contract for use unit '{use_unit_id_num}'"
+        logger.warning(msg)
+        print(msg)
+
+    the_contract = contract[0]
+    contractors = None
+    if not the_contract.restriction_of_use.is_vacancy:
+        contractors = wowi.get_contractors(license_agreement_id=the_contract.id_,
+                                           contractual_use_active_on=datetime.now())
+
+    return contractors, the_contract
+
+
+def filter_contractors(contractor_list) -> dict:
+    ret_dict = {
+        "last1": None,
+        "last2": None,
+        "first1": None,
+        "first2": None
+    }
+    if not contractor_list:
+        return ret_dict
+
+    for contractor in contractor_list:
+        if contractor.contractor_type.name == "1. Vertragsnehmer":
+            if contractor.person.is_natural_person:
+                ret_dict["first1"] = contractor.person.natural_person.first_name
+                ret_dict["last1"] = contractor.person.natural_person.last_name
+            else:
+                ret_dict["last1"] = contractor.person.legal_person.long_name1
+        elif contractor.contractor_type.name == "2. Vertragsnehmer":
+            if contractor.person.is_natural_person:
+                ret_dict["first2"] = contractor.person.natural_person.first_name
+                ret_dict["last2"] = contractor.person.natural_person.last_name
+            else:
+                ret_dict["last2"] = contractor.person.legal_person.long_name1
+
+    return ret_dict
+
+
+def sync_use_units(wowi: WowiPy):
+    use_units = wowi.get_use_units(fetch_all=True)
+    uu_ids = []
+    entry: WowiUseUnit
+    counter = 0
+    total = len(use_units)
+    non_existing_uus = 0
+    non_existing_building = 0
+    for entry in use_units:
+        counter += 1
+        print(f"UseUnit {counter} of {total}")
+        # Check if Use unit or building was torn down
+        building = db.session.query(GeoBuilding).filter(GeoBuilding.erp_id == entry.building_land.id_).first()
+        if not building:
+            non_existing_building += 1
+            continue
+        if entry.exit_date:
+            try:
+                exit_date = datetime.strptime(str(entry.exit_date), "%Y-%m-%d")
+                if exit_date < datetime.now():
+                    non_existing_uus += 1
+                    continue
+            except ValueError:
+                logger.error(f"sync_use_unit: Wrong date format: '{entry.exit_date}'")
+        contract: LicenseAgreement
+        contractors, contract = get_contractors_for_use_unit(wowi, use_unit_id_num=entry.id_num)
+        contr_list = filter_contractors(contractors)
+
+        type_name = entry.current_use_unit_type.use_unit_usage_type.name
+        if type_name == "Wohnung":
+            uu_type = UseUnitType.APARTMENT
+        elif type_name == "Gewerbe":
+            uu_type = UseUnitType.COMMERCIAL
+        elif type_name == "Garage":
+            uu_type = UseUnitType.GARAGE
+        elif type_name == "Stellplatz":
+            uu_type = UseUnitType.PARKING
+        else:
+            uu_type = UseUnitType.OTHER
+
+        contract_idnum = None
+        contract_id = None
+        contract_start = None
+        contract_end = None
+        contract_is_vacancy = False
+        contract_is_cancelled = False
+        if contract:
+            contract_idnum = contract.id_num
+            contract_id = contract.id_
+            contract_end = contract.end_of_contract
+            contract_start = contract.start_contract
+            if contract.status_contract.name == "gekündigt":
+                contract_is_cancelled = True
+            if contract.restriction_of_use.is_vacancy:
+                contract_is_vacancy = True
+
+        uu_ids.append(entry.id_)
+        find_use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == entry.id_).first()
+        if find_use_unit:
+            find_use_unit.use_unit_type = uu_type
+            find_use_unit.erp_id = entry.id_
+            find_use_unit.erp_eco_unit_id = entry.economic_unit.id_
+            find_use_unit.erp_building_id = entry.building_land.id_
+            find_use_unit.erp_idnum = entry.id_num
+            find_use_unit.contractor_first_name_1 = contr_list.get("first1")
+            find_use_unit.contractor_first_name_2 = contr_list.get("first2")
+            find_use_unit.contractor_last_name_1 = contr_list.get("last1")
+            find_use_unit.contractor_last_name_2 = contr_list.get("last2")
+            find_use_unit.erp_contract_id = contract_id
+            find_use_unit.erp_contract_idnum = contract_idnum
+            find_use_unit.contract_start = contract_start
+            find_use_unit.contract_end = contract_end
+            find_use_unit.is_vacancy = contract_is_vacancy
+            find_use_unit.is_cancelled = contract_is_cancelled
+            find_use_unit.description_of_position = entry.description_of_position
+        else:
+            find_use_unit = ErpUseUnit(
+                use_unit_type=uu_type,
+                erp_id=entry.id_,
+                erp_idnum=entry.id_num,
+                erp_building_id=entry.building_land.id_,
+                erp_eco_unit_id=entry.economic_unit.id_,
+                contractor_last_name_1=contr_list.get("last1"),
+                contractor_first_name_1=contr_list.get("first1"),
+                contractor_last_name_2=contr_list.get("last2"),
+                contractor_first_name_2=contr_list.get("first2"),
+                erp_contract_id=contract_id,
+                erp_contract_idnum=contract_idnum,
+                contract_start=contract_start,
+                contract_end=contract_end,
+                is_vacancy=contract_is_vacancy,
+                is_cancelled=contract_is_cancelled,
+                description_of_position=entry.description_of_position
+            )
+            db.session.add(find_use_unit)
+        db.session.commit()
+
+    print(f"non existing uus: {non_existing_uus}")
+    print(f"non existing buildings: {non_existing_building}")
+    all_uus = db.session.query(ErpUseUnit).all()
+    for all_uu_check in all_uus:
+        if all_uu_check.erp_id not in uu_ids:
+            db.session.delete(all_uu_check)
+    db.session.commit()
+
+
+def sync_buildings(wowi: WowiPy):
+    buildings = wowi.get_building_lands(fetch_all=True)
+    b_ids = []
+    entry: WowiBuildingLand
+    counter = 0
+    total = len(buildings)
+    for entry in buildings:
+        counter += 1
+        print(f"Building {counter} of {total}")
+        if entry.exit_date:
+            try:
+                exit_date = datetime.strptime(str(entry.exit_date), "%Y-%m-%d")
+                if exit_date < datetime.now():
+                    continue
+            except ValueError:
+                logger.error(f"sync_use_unit: Wrong date format: '{entry.exit_date}'")
+        # HARDCODED TENANT SPECIFIC VALUES - NEED TO FIX THIS
+        if entry.id_num.startswith("11") or entry.id_num.startswith("13"):
+            continue
+        # HARDCODED END
+        type_name = entry.building.building_type.name
+
+        members_living = ["Einfamilienhaus", "Mehrfamilienhaus", "Zweifamilienhaus", "Wohn- und Geschäftshaus",
+                          "Doppelhaushälfte"]
+        members_parking = ["Carport", "Garage", "Hochgarage", "Parkhaus", "Stellplatz", "Tiefgarage"]
+        members_office = ["Einkaufszentrum", "Bürogebäude", "Fabrikgebäude", "Supermarkt"]
+
+        if type_name in members_living:
+            b_type = BuildingType.LIVING
+        elif type_name in members_parking:
+            b_type = BuildingType.PARKING
+        elif type_name in members_office:
+            b_type = BuildingType.OFFICE
+        else:
+            b_type = BuildingType.OTHER
+
+        b_ids.append(entry.id_)
+        find_building = db.session.query(GeoBuilding).filter(GeoBuilding.erp_id == entry.id_).first()
+        if find_building:
+            find_building.building_type = b_type
+            find_building.erp_eco_unit_id = entry.economic_unit.id_
+            find_building.erp_idnum = entry.id_num
+            find_building.street = entry.estate_address.street
+            find_building.postcode = entry.estate_address.zip_
+            find_building.town = entry.estate_address.town
+            find_building.street_complete = entry.estate_address.street_complete
+        else:
+            find_use_unit = GeoBuilding(
+                building_type=b_type,
+                erp_id=entry.id_,
+                erp_idnum=entry.id_num,
+                erp_eco_unit_id=entry.economic_unit.id_,
+                street=entry.estate_address.street,
+                street_complete=entry.estate_address.street_complete,
+                postcode=entry.estate_address.zip_,
+                town=entry.estate_address.town,
+            )
+            db.session.add(find_use_unit)
+        db.session.commit()
+
+    all_bs = db.session.query(GeoBuilding).all()
+    for all_b_check in all_bs:
+        if all_b_check.erp_id not in b_ids:
+            db.session.delete(all_b_check)
+    db.session.commit()

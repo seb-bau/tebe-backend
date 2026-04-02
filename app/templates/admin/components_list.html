@@ -5,8 +5,8 @@
 {% block content %}
     <h1 class="mb-4">Merkmale</h1>
 
-<form method="get" class="row g-2 align-items-end mb-3">
-        <div class="col-md-4">
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-md-3">
             <label for="q" class="form-label">Suche</label>
             <input type="text"
                    class="form-control"
@@ -15,22 +15,31 @@
                    placeholder="Name, Kommentar, Ausstattungsgruppe..."
                    value="{{ q or '' }}">
         </div>
-        <div class="col-md-4">
+
+        <div class="col-md-3">
             <label for="status" class="form-label">Status</label>
             <select class="form-select" id="status" name="status">
                 <option value="">Alle</option>
-                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>
-                    Nur aktive
-                </option>
-                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>
-                    Nur inaktive
-                </option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Nur aktive</option>
+                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Nur inaktive</option>
             </select>
         </div>
-        <div class="col-md-4 d-flex gap-2">
-            <button type="submit" class="btn btn-primary mt-auto">
-                Filtern
-            </button>
+
+        <div class="col-md-3">
+            <label for="use_unit_type_id" class="form-label">Gültige Nutzungsart</label>
+            <select class="form-select" id="use_unit_type_id" name="use_unit_type_id">
+                <option value="">Alle</option>
+                {% for item in use_unit_type_items %}
+                    <option value="{{ item.id }}"
+                            {% if selected_use_unit_type_id and selected_use_unit_type_id|string == item.id|string %}selected{% endif %}>
+                        {{ item.display_name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-3 d-flex gap-2">
+            <button type="submit" class="btn btn-primary mt-auto">Filtern</button>
             <a href="{{ url_for('admin_components_list') }}" class="btn btn-outline-secondary mt-auto">
                 Zurücksetzen
             </a>
@@ -44,10 +53,9 @@
                 <tr>
                     <th>ID</th>
                     <th>Name (ERP)</th>
-                    <th>Benutzerdefinierter Name</th>
-                    <th>Anzeigename</th>
                     <th>Kommentar</th>
                     <th>Rollen</th>
+                    <th>Gültige Nutzungsarten</th>
                     <th>Ausstattungsgruppe</th>
                     <th>Aktiv</th>
                     <th>Boolscher Wert</th>
@@ -60,9 +68,8 @@
                     <tr>
                         <td>{{ component.id }}</td>
                         <td>{{ component.name }}</td>
-                        <td>{{ component.custom_name or "–" }}</td>
-                        <td>{{ component.display_name }}</td>
                         <td>{{ component.comment or "–" }}</td>
+
                         <td>
                             {% if component.roles and component.roles|length > 0 %}
                                 {% for r in component.roles %}
@@ -73,7 +80,18 @@
                             {% endif %}
                         </td>
 
+                        <td>
+                            {% if component.valid_use_unit_types and component.valid_use_unit_types|length > 0 %}
+                                {% for t in component.valid_use_unit_types %}
+                                    <span class="badge bg-light text-dark border me-1">{{ t.display_name }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">–</span>
+                            {% endif %}
+                        </td>
+
                         <td>{{ component.facility.display_name if component.facility else "–" }}</td>
+
                         <td>
                             {% if component.enabled %}
                                 <span class="badge bg-success">Aktiv</span>
@@ -81,6 +99,7 @@
                                 <span class="badge bg-secondary">Inaktiv</span>
                             {% endif %}
                         </td>
+
                         <td>
                             {% if component.is_bool %}
                                 <span class="badge bg-success">Ja</span>
@@ -88,6 +107,7 @@
                                 <span class="badge bg-secondary">Nein</span>
                             {% endif %}
                         </td>
+
                         <td>
                             {% if component.single_under_component %}
                                 <span class="badge bg-success">Ja</span>
@@ -95,6 +115,7 @@
                                 <span class="badge bg-secondary">Nein</span>
                             {% endif %}
                         </td>
+
                         <td class="text-end">
                             <a href="{{ url_for('admin_components_edit', component_id=component.id) }}"
                                class="btn btn-sm btn-outline-primary">
@@ -104,7 +125,7 @@
                     </tr>
                 {% else %}
                     <tr>
-                        <td colspan="17" class="text-center text-muted">
+                        <td colspan="10" class="text-center text-muted">
                             Keine Merkmale gefunden.
                         </td>
                     </tr>
@@ -122,7 +143,7 @@
                             <ul class="pagination mb-0">
                                 <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
                                     <a class="page-link"
-                                       href="{{ url_for('admin_components_list', page=pagination.prev_num, q=q, status=status_filter) }}"
+                                       href="{{ url_for('admin_components_list', page=pagination.prev_num, q=q, status=status_filter, use_unit_type_id=selected_use_unit_type_id) }}"
                                        aria-label="Vorherige Seite">
                                         &laquo;
                                     </a>
@@ -131,7 +152,7 @@
                                     {% if p %}
                                         <li class="page-item {% if p == pagination.page %}active{% endif %}">
                                             <a class="page-link"
-                                               href="{{ url_for('admin_components_list', page=p, q=q, status=status_filter) }}">
+                                               href="{{ url_for('admin_components_list', page=p, q=q, status=status_filter, use_unit_type_id=selected_use_unit_type_id) }}"
                                                 {{ p }}
                                             </a>
                                         </li>
@@ -141,7 +162,7 @@
                                 {% endfor %}
                                 <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
                                     <a class="page-link"
-                                       href="{{ url_for('admin_components_list', page=pagination.next_num, q=q, status=status_filter) }}"
+                                       href="{{ url_for('admin_components_list', page=pagination.next_num, q=q, status=status_filter, use_unit_type_id=selected_use_unit_type_id) }}"
                                        aria-label="Nächste Seite">
                                         &raquo;
                                     </a>

@@ -1,7 +1,8 @@
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from wowipy.wowipy import WowiPy, ComponentElement
-from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem
+from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem, UseUnitTypeItem, ErpUseUnit
+from sqlalchemy import or_
 from app.models import FacilityItem
 from app.extensions import db
 from flask import current_app
@@ -90,16 +91,30 @@ def register_routes_api_inventory(app):
     def app_uu_current_data(use_unit_id):
         if current_app.config['DEMO_MODE']:
             return _json_from_file(current_app.config['DEMO_CUR_DATA'])
+
         current_user_id = int(get_jwt_identity())
         user = User.query.get(current_user_id)
         if not user or not user.role_id:
             return jsonify({"msg": "user has no role"}), 403
 
-        # Erlaubte Komponenten sind erlaubt und für die entsprechende Benutzerrolle aktiv
+        erp_use_unit = ErpUseUnit.query.filter_by(erp_id=use_unit_id).first()
+        if not erp_use_unit:
+            return jsonify({"msg": f"local erp_use_unit for use_unit_id '{use_unit_id}' not found"}), 404
+
+        current_use_unit_type = erp_use_unit.use_unit_type
+        if not current_use_unit_type:
+            return jsonify({"msg": f"use_unit_type missing for use_unit_id '{use_unit_id}'"}), 400
+
         role_id = user.role_id
         allowed_components = db.session.query(ComponentCatalogItem).filter(
             ComponentCatalogItem.enabled.is_(True),
             ComponentCatalogItem.roles.any(Role.id == role_id),
+            or_(
+                ~ComponentCatalogItem.valid_use_unit_types.any(),
+                ComponentCatalogItem.valid_use_unit_types.any(
+                    UseUnitTypeItem.code == current_use_unit_type
+                )
+            )
         ).all()
 
         allowed_component_ids = {item.id for item in allowed_components}
@@ -109,14 +124,18 @@ def register_routes_api_inventory(app):
             retval_existing = []
             retval_missing = []
             found_types = []
+
             component: ComponentElement
             for component in components:
                 comp_cat_item = db.session.get(ComponentCatalogItem, component.component_catalog_id)
                 if not comp_cat_item:
-                    logger.error(f"app_uu_current_data: Could not get component catalog item with id "
-                                 f"'{component.component_catalog_id}' for use_unit_id '{use_unit_id}' for user "
-                                 f"'todo'")
+                    logger.error(
+                        f"app_uu_current_data: Could not get component catalog item with id "
+                        f"'{component.component_catalog_id}' for use_unit_id '{use_unit_id}'"
+                    )
                     return jsonify({"msg": f"Missing component catalog item '{component.component_catalog_id}'"}), 500
+
+                # Nur Komponenten berücksichtigen, die für Rolle + UseUnitType erlaubt sind
                 if component.component_catalog_id not in allowed_component_ids:
                     continue
 
@@ -126,18 +145,23 @@ def register_routes_api_inventory(app):
                 if not component_valid_selection(component, comp_cat_item):
                     delete_option = current_app.config["INI_CONFIG"].getboolean(
                         "Handling", "del_comp_without_selection",
-                        fallback=False)
+                        fallback=False
+                    )
                     if delete_option:
                         try:
                             wowi.delete_component(component.facility_id, component.id_)
-                            logger.warning(f"uu_current_data: Deleted component {component.id_} because of incorrect "
-                                           f"selection.")
+                            logger.warning(
+                                f"uu_current_data: Deleted component {component.id_} because of incorrect selection."
+                            )
                         except Exception as e:
-                            logger.error(f"uu_current_data: Should delete comp {component.id_} but error occured: "
-                                         f"{str(e)}")
+                            logger.error(
+                                f"uu_current_data: Should delete comp {component.id_} but error occured: {str(e)}"
+                            )
                     else:
-                        logger.warning(f"uu_current_data: Ignored component {component.id_} because of incorrect "
-                                       f"selection. Config Item: {delete_option}")
+                        logger.warning(
+                            f"uu_current_data: Ignored component {component.id_} because of incorrect selection. "
+                            f"Config Item: {delete_option}"
+                        )
                     continue
 
                 if comp_cat_item.under_components:
@@ -156,10 +180,14 @@ def register_routes_api_inventory(app):
 
                 fac_item = db.session.get(FacilityItem, component.facility_id)
                 if not fac_item:
-                    logger.error(f"app_uu_current_data: No facility found for component '{component.id_}', "
-                                 f"facility id '{component.facility_id}'")
+                    logger.error(
+                        f"app_uu_current_data: No facility found for component '{component.id_}', "
+                        f"facility id '{component.facility_id}'"
+                    )
                     continue
+
                 fac_cat = db.session.get(FacilityCatalogItem, fac_item.facility_catalog_item_id)
+
                 retval_existing.append({
                     "id": component.id_,
                     "name": comp_cat_item.name,
@@ -173,7 +201,8 @@ def register_routes_api_inventory(app):
                     "is_bool": comp_cat_item.is_bool,
                     "single_under_component": comp_cat_item.single_under_component,
                     "hide_quantity": comp_cat_item.hide_quantity,
-                    "comment": component.comment
+                    "comment": component.comment,
+                    # "hint": comp_cat_item.hint
                 })
                 found_types.append(comp_cat_item.id)
 
@@ -197,8 +226,10 @@ def register_routes_api_inventory(app):
                         "facility_folded": fac_cat.view_folded,
                         "is_bool": cat_item.is_bool,
                         "single_under_component": cat_item.single_under_component,
-                        "hide_quantity": cat_item.hide_quantity
+                        "hide_quantity": cat_item.hide_quantity,
+                        # "hint": cat_item.hint
                     })
+
             return {
                 "existing_items": retval_existing,
                 "missing_items": retval_missing
