@@ -761,7 +761,6 @@ def register_routes_web(app):
             hint = request.form.get("hint") or None
 
             role_ids = request.form.getlist("role_ids")
-            under_component_ids = request.form.getlist("under_component_ids")
             valid_use_unit_type_ids = request.form.getlist("valid_use_unit_type_ids")
 
             if is_bool and single_under_component:
@@ -770,12 +769,6 @@ def register_routes_web(app):
                     category="error",
                 )
                 return redirect(url_for("admin_components_list"))
-
-            selected_under_components = []
-            if under_component_ids:
-                selected_under_components = UnderComponentItem.query.filter(
-                    UnderComponentItem.id.in_(under_component_ids)
-                ).all()
 
             selected_roles = []
             if role_ids:
@@ -793,7 +786,6 @@ def register_routes_web(app):
             component.single_under_component = single_under_component
             component.hide_quantity = hide_quantity
             component.hint = hint
-            component.under_components = selected_under_components
             component.roles = selected_roles
             component.valid_use_unit_types = selected_use_unit_types
 

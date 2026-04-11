@@ -1,6 +1,6 @@
 from flask import request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import User, GeoBuilding, ErpUseUnit
+from app.models import User, GeoBuilding, ErpUseUnit, UseUnitType
 from app.extensions import db
 from flask import current_app
 from sqlalchemy import or_, inspect, func
@@ -126,6 +126,15 @@ def register_routes_api_masterdata(app):
         param_limit = request.args.get("limit")
         only_terminated = get_bool_arg("only_terminated")
         only_vacant = get_bool_arg("only_vacant")
+        param_uu_type = request.args.get("use_unit_type")
+        valid_uu_types = None
+        if param_uu_type:
+            if param_uu_type == "UseUnitType.APARTMENT":
+                valid_uu_types = [UseUnitType.APARTMENT, UseUnitType.OTHER]
+            elif param_uu_type == "UseUnitType.COMMERCIAL":
+                valid_uu_types = [UseUnitType.COMMERCIAL]
+            elif param_uu_type == "UseUnitType.PARKING":
+                valid_uu_types = [UseUnitType.PARKING, UseUnitType.GARAGE]
 
         if param_fulltext:
             # Ignore radius if fulltext search is active
@@ -207,6 +216,9 @@ def register_routes_api_masterdata(app):
                 if only_terminated and not uu.is_cancelled:
                     continue
 
+                if valid_uu_types and uu.use_unit_type not in valid_uu_types:
+                    continue
+
                 if not uu.is_vacancy:
                     contract_info = {
                         "id_num": uu.erp_contract_idnum,
@@ -231,7 +243,8 @@ def register_routes_api_masterdata(app):
                     "id_num": uu.erp_idnum,
                     "id": uu.erp_id,
                     "location": uu.description_of_position,
-                    "contract": contract_info
+                    "contract": contract_info,
+                    "type": str(uu.use_unit_type)
                 })
 
             if not object_has_relevant_use_units:
@@ -256,7 +269,8 @@ def register_routes_api_masterdata(app):
                 "use_units": uu_info,
                 "lat": loc_lat,
                 "lon": loc_lon,
-                "distance": distance
+                "distance": distance,
+                "type": str(building.building_type)
             })
 
         return jsonify({

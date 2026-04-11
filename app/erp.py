@@ -230,6 +230,16 @@ def sync_component_catalog(wowi: WowiPy):
                 facility_catalog_item_id=entry2.facility_catalog_id
             )
             db.session.add(find_component)
+        all_under_comp = []
+        if entry2.allowed_under_components:
+            for uc_entry in entry2.allowed_under_components:
+                find_uc = db.session.get(UnderComponentItem, uc_entry.id_)
+                if not find_uc:
+                    logger.error(f"sync_component_catalog: Cannot find under component with id '{uc_entry.id_}' in db")
+                    continue
+                all_under_comp.append(find_uc)
+        find_component.allowed_under_components = all_under_comp
+
         db.session.commit()
 
     all_comp_cats = db.session.query(ComponentCatalogItem).all()
@@ -388,8 +398,8 @@ def sync_erp_data():
     sync_buildings(wowi)
     sync_facility_catalog(wowi)
     sync_facility_items(wowi)
-    sync_component_catalog(wowi)
     sync_under_component_catalog(wowi)
+    sync_component_catalog(wowi)
     sync_estate_picture_types(wowi)
     sync_media_entities(wowi)
     sync_departments(wowi)
@@ -413,9 +423,10 @@ def sync_erp_building_data():
 def sync_erp_component_facility_catalog():
     wowi = get_wowi_client()
     sync_facility_catalog(wowi)
-    sync_component_catalog(wowi)
     sync_under_component_catalog(wowi)
+    sync_component_catalog(wowi)
     sync_facility_items(wowi)
+    fix_building_types()
 
 
 def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) -> int:
@@ -1002,3 +1013,27 @@ def sync_buildings(wowi: WowiPy):
         if all_b_check.erp_id not in b_ids:
             db.session.delete(all_b_check)
     db.session.commit()
+
+
+def fix_building_types():
+    buildings = db.session.query(GeoBuilding).all()
+    for building in buildings:
+        all_use_units_same_type = True
+        all_use_units_type = None
+        use_units = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_building_id == building.erp_id)
+        for uu in use_units:
+            if not all_use_units_type:
+                all_use_units_type = uu.use_unit_type
+            else:
+                if all_use_units_type != uu.use_unit_type:
+                    all_use_units_same_type = False
+                    break
+
+        ret_bb_type: BuildingType
+        if all_use_units_same_type:
+            if all_use_units_type == UseUnitType.GARAGE or all_use_units_type == UseUnitType.PARKING:
+                building.building_type = BuildingType.PARKING
+            elif all_use_units_type == UseUnitType.COMMERCIAL:
+                building.building_type = BuildingType.OFFICE
+
+        db.session.commit()

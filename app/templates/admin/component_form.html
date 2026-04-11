@@ -120,18 +120,22 @@
         </div>
 
         <div class="mb-4">
-            <label for="under_component_ids" class="form-label">Zugeordnete Merkmalausprägungen</label>
-            <select class="form-select" id="under_component_ids" name="under_component_ids" multiple size="10">
-                {% for uc in under_components %}
-                    <option value="{{ uc.id }}" {% if uc in component.under_components %}selected{% endif %}>
-                        {{ uc.display_name }}
-                    </option>
-                {% endfor %}
-            </select>
-            <div class="form-text">
-                Die Zuordnung kann durch den ERP-Abgleich überschrieben werden.
-            </div>
+    <label class="form-label d-block">Zugeordnete Merkmalausprägungen</label>
+
+    {% if component.under_components %}
+        <div class="d-flex flex-wrap gap-2">
+            {% for uc in component.under_components %}
+                <span class="badge rounded-pill text-bg-light border">
+                    {{ uc.display_name }}
+                </span>
+            {% endfor %}
         </div>
+    {% else %}
+        <div class="form-text">
+            Keine Merkmalausprägungen zugeordnet.
+        </div>
+    {% endif %}
+</div>
 
         <div class="mb-4">
             <label for="role_ids" class="form-label">Rollen</label>
