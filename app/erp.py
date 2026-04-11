@@ -517,7 +517,7 @@ def create_component(
             sub_names = sub_names[:250]
         uu = db.session.get(ErpUseUnit, puu_id)
         if uu:
-            uu_idnum = uu.id_num
+            uu_idnum = uu.erp_idnum
 
     except Exception as e:
         logger.error(f"create_component: Error while getting event info: {str(e)}")
@@ -601,7 +601,7 @@ def edit_component(
             sub_names = sub_names[:250]
         uu = db.session.get(ErpUseUnit, the_component.use_unit_id)
         if uu:
-            uu_idnum = uu.id_num
+            uu_idnum = uu.erp_idnum
 
     except Exception as e:
         logger.error(f"edit_component: Error while collecting event info: {str(e)}")
