@@ -238,8 +238,7 @@ def sync_component_catalog(wowi: WowiPy):
                     logger.error(f"sync_component_catalog: Cannot find under component with id '{uc_entry.id_}' in db")
                     continue
                 all_under_comp.append(find_uc)
-        find_component.allowed_under_components = all_under_comp
-        print(f"comp '{find_component.name}': {all_under_comp}")
+        find_component.under_components = all_under_comp
         db.session.commit()
 
     all_comp_cats = db.session.query(ComponentCatalogItem).all()
