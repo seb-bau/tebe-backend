@@ -239,7 +239,7 @@ def sync_component_catalog(wowi: WowiPy):
                     continue
                 all_under_comp.append(find_uc)
         find_component.allowed_under_components = all_under_comp
-        logger.info(f"comp '{find_component.name}': {all_under_comp}")
+        print(f"comp '{find_component.name}': {all_under_comp}")
         db.session.commit()
 
     all_comp_cats = db.session.query(ComponentCatalogItem).all()
