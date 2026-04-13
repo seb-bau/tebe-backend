@@ -395,6 +395,7 @@ def sync_erp_data():
     wowi = get_wowi_client()
     sync_use_units(wowi)
     sync_buildings(wowi)
+    fix_building_types()
     sync_facility_catalog(wowi)
     sync_facility_items(wowi)
     sync_under_component_catalog(wowi)
