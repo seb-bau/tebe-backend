@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Maßnahmen{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Maßnahmen</h1>
+    <a href="{{ url_for('admin_measures_create') }}" class="btn btn-primary">
+        Neue Maßnahme anlegen
+    </a>
+</div>
+
+<table class="table table-striped align-middle">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>ERP-ID</th>
+            <th>Name</th>
+            <th>Aktionen</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in measures %}
+        <tr>
+            <td>{{ c.id }}</td>
+            <td>{{ c.erp_id }}</td>
+            <td>{{ c.name }}</td>
+            <td>
+                <a href="{{ url_for('admin_measures_edit', measure_id=c.id) }}"
+                   class="btn btn-sm btn-outline-secondary">
+                    Bearbeiten
+                </a>
+                <form action="{{ url_for('admin_measures_delete', measure_id=c.id) }}"
+                      method="post"
+                      class="d-inline"
+                      onsubmit="return confirm('Maßnahme wirklich löschen?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                        Löschen
+                    </button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

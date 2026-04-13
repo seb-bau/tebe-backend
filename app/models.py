@@ -436,3 +436,14 @@ class CheckListItem(db.Model):
 
     def __repr__(self):
         return f"CheckListItem {self.description}"
+
+
+class ModPropMeasure(db.Model):
+    __tablename__ = "mod_prop_measure"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    erp_id = db.Column(db.Integer, nullable=False)
+
+    def __repr__(self):
+        return f"ModProbMeasure {self.name} ({self.id})"

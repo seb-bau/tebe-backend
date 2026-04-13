@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% if measure %}
+    {% set page_title = "Maßnahme bearbeiten" %}
+{% else %}
+    {% set page_title = "Maßnahme anlegen" %}
+{% endif %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">{{ page_title }}</h1>
+    <a href="{{ url_for('admin_measures_list') }}" class="btn btn-outline-secondary">
+        Zurück zur Liste
+    </a>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+      <form method="post" class="flex-grow-1" style="min-width: 320px;">
+        <input type="hidden" name="_form" value="measure">
+          <label for="erp_id" class="form-label">ERP-ID</label>
+        <input type="number" step="1" class="form-control" id="erp_id" name="erp_id" required
+               value="{{ measure.erp_id if measure else '' }}">
+        <label for="name" class="form-label">Name</label>
+        <input type="text" class="form-control" id="name" name="name" required
+               value="{{ measure.name if measure else '' }}">
+        <button type="submit" class="btn btn-primary mt-3">Speichern</button>
+        {% if measure %}
+          <span class="ms-2 text-muted small">ID: {{ measure.id }}</span>
+        {% endif %}
+      </form>
+
+      {% if measure %}
+        <form action="{{ url_for('admin_measures_delete', measure_id=measure.id) }}"
+              method="post"
+              onsubmit="return confirm('Maßnahme wirklich löschen?');">
+          <button type="submit" class="btn btn-outline-danger">
+            Maßnahme löschen
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

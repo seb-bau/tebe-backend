@@ -1,7 +1,7 @@
 from flask import render_template, request, flash, abort, redirect, url_for
 from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem
 from app.models import (EventItem, Department, ResponsibleOfficial, CheckList, CheckListItem, ErpUseUnit,
-                        UseUnitTypeItem)
+                        UseUnitTypeItem, ModPropMeasure)
 from app.extensions import db
 from flask import current_app
 from flask_login import login_required, current_user
@@ -184,6 +184,64 @@ def register_routes_web(app):
             return redirect(url_for("admin_officials_list"))
 
         return render_template("admin/official_form.html", official=official)
+
+    # ---------------------------------------------------------
+    # Mod prop measurements
+    # ---------------------------------------------------------
+    @app.route("/admin/measures")
+    @admin_required
+    def admin_measures_list():
+        measures = ModPropMeasure.query.order_by(ModPropMeasure.name.asc(), ModPropMeasure.id.asc()).all()
+        return render_template("admin/measures_list.html", measures=measures)
+
+    @app.route("/admin/measures/create", methods=["GET", "POST"])
+    @admin_required
+    def admin_measures_create():
+        if request.method == "POST":
+            name = (request.form.get("name") or "").strip()
+            erp_id = int(request.form.get("erp_id"))
+            if not name or not erp_id:
+                flash("Name und ERP-ID sind Pflichtfelder.", "danger")
+                return redirect(url_for("admin_measures_create"))
+
+            measure = ModPropMeasure(name=name, erp_id=erp_id)
+            db.session.add(measure)
+            db.session.commit()
+            flash("Maßnahme wurde erstellt.", "success")
+            return redirect(url_for("admin_measures_edit", measure_id=measure.id))
+
+        return render_template("admin/measure_form.html", measure=None)
+
+    @app.route("/admin/measure/<int:measure_id>/edit", methods=["GET", "POST"])
+    @admin_required
+    def admin_measures_edit(measure_id):
+        measure = ModPropMeasure.query.get_or_404(measure_id)
+        if request.method == "POST" and request.form.get("_form") == "measure":
+            name = (request.form.get("name") or "").strip()
+            erp_id = int(request.form.get("erp_id"))
+            if not name or not erp_id:
+                flash("Name und erp_id sind Pflichtfelder.", "danger")
+                return redirect(url_for("admin_measures_edit", measure_id=measure.id))
+
+            measure.name = name
+            measure.erp_id = erp_id
+            db.session.commit()
+            flash("Maßnahme wurde aktualisiert.", "success")
+            return redirect(url_for("admin_measures_edit", measure_id=measure.id))
+
+        return render_template(
+            "admin/measure_form.html",
+            measure=measure,
+        )
+
+    @app.route("/admin/measure/<int:measure_id>/delete", methods=["POST"])
+    @admin_required
+    def admin_measures_delete(measure_id):
+        measure = ModPropMeasure.query.get_or_404(measure_id)
+        db.session.delete(measure)
+        db.session.commit()
+        flash("Maßnahme wurde gelöscht.", "info")
+        return redirect(url_for("admin_measures_list"))
 
     # ---------------------------------------------------------
     # Checklisten
