@@ -140,6 +140,11 @@ def register_routes_api_ticket(app):
         contract_entity_id = current_app.config["INI_CONFIG"].getint("OpenWowi", "contract_entity_id", fallback=0)
         building_entity_id = current_app.config["INI_CONFIG"].getint("OpenWowi", "building_entity_id", fallback=0)
         eco_unit_entity_id = current_app.config["INI_CONFIG"].getint("OpenWowi", "eco_unit_entity_id", fallback=0)
+        ticket_footer = current_app.config["INI_CONFIG"].get("Handling", "ticket_footer", fallback=None)
+
+        if ticket_footer:
+            ticket_footer = ticket_footer.replace("<user_name>", user.name)
+            content = f"{content}\n\n{ticket_footer}"
 
         active_assignments = []
 
