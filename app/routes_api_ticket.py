@@ -1,6 +1,7 @@
 import tempfile
 import os
 import uuid
+import shutil
 from pathlib import Path
 
 from flask import request, jsonify, abort
@@ -274,9 +275,12 @@ def register_routes_api_ticket(app):
                     logger.error(f"route_api_ticket_create: Cannot upload new groundplan because of missing "
                                  f"picture type or media entity db entry")
                 else:
+                    photo_path = os.path.join(ticket_dir, f"{uuid.uuid4().hex}{ext}")
+                    shutil.copy2(path, photo_path)
+
                     celery.send_task("tasks.upload_erp_photo", args=[
                         use_unit_id,
-                        path,
+                        photo_path,
                         pic_type.id,
                         med_ent.id,
                         None,

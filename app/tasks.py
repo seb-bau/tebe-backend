@@ -132,7 +132,7 @@ def register_tasks(celery):
 
                 new_event = EventItem(
                     user_id=user_id,
-                    user_name=user.name,
+                    user_name=user.name if user else None,
                     action="upl_photo",
                     use_unit_id=entity_id,
                     use_unit_idnum=entity_idnum,
@@ -207,7 +207,7 @@ def register_tasks(celery):
 
                 new_event = EventItem(
                     user_id=user_id,
-                    user_name=user.name,
+                    user_name=user.name if user else None,
                     action="upl_file",
                     use_unit_id=tick_id,
                     last_lat=last_lat,
