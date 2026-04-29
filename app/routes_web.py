@@ -483,8 +483,29 @@ def register_routes_web(app):
     @app.route("/admin/users")
     @admin_required
     def admin_users_list():
-        users = User.query.order_by(User.email.asc()).all()
-        return render_template("admin/users_list.html", users=users)
+        sort = request.args.get("sort", "email")
+        direction = request.args.get("direction", "asc")
+
+        sort_columns = {
+            "id": User.id,
+            "email": User.email,
+            "name": User.name,
+            "last_action": User.last_action,
+        }
+
+        column = sort_columns.get(sort, User.email)
+
+        if direction == "desc":
+            users = User.query.order_by(column.desc(), User.id.asc()).all()
+        else:
+            users = User.query.order_by(column.asc(), User.id.asc()).all()
+
+        return render_template(
+            "admin/users_list.html",
+            users=users,
+            sort=sort,
+            direction=direction,
+        )
 
     # Neuen Benutzer anlegen
     @app.route("/admin/users/create", methods=["GET", "POST"])

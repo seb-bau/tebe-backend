@@ -19,9 +19,29 @@
 <table class="table table-striped align-middle">
     <thead>
         <tr>
-            <th>ID</th>
-            <th>E-Mail</th>
-            <th>Name</th>
+            <th>
+                <a href="{{ url_for('admin_users_list', sort='id', direction='desc' if sort == 'id' and direction == 'asc' else 'asc') }}">
+                    ID{% if sort == 'id' %} {{ '↑' if direction == 'asc' else '↓' }}{% endif %}
+                </a>
+            </th>
+
+            <th>
+                <a href="{{ url_for('admin_users_list', sort='email', direction='desc' if sort == 'email' and direction == 'asc' else 'asc') }}">
+                    E-Mail{% if sort == 'email' %} {{ '↑' if direction == 'asc' else '↓' }}{% endif %}
+                </a>
+            </th>
+
+            <th>
+                <a href="{{ url_for('admin_users_list', sort='name', direction='desc' if sort == 'name' and direction == 'asc' else 'asc') }}">
+                    Name{% if sort == 'name' %} {{ '↑' if direction == 'asc' else '↓' }}{% endif %}
+                </a>
+            </th>
+
+            <th>
+                <a href="{{ url_for('admin_users_list', sort='last_action', direction='desc' if sort == 'last_action' and direction == 'asc' else 'asc') }}">
+                    Zuletzt aktiv{% if sort == 'last_action' %} {{ '↑' if direction == 'asc' else '↓' }}{% endif %}
+                </a>
+            </th>
             <th>Rolle</th>
             <th>Aktiv</th>
             <th>Admin</th>
@@ -34,6 +54,7 @@
             <td>{{ u.id }}</td>
             <td>{{ u.email }}</td>
             <td>{{ u.name }}</td>
+            <td>{{ u.last_action }}</td>
             <td>{{ u.role.name if u.role else "–" }}</td>
             <td>
                 {% if u.is_active %}
