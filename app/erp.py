@@ -489,9 +489,17 @@ def create_component(
         else:
             sub_components.append(config.getint("Handling", "bool_sub_component_no_id"))
 
+    comp_count = count
+    if not component_cat_item.is_bool:
+        for tsub in sub_components:
+            sub_object = db.session.get(UnderComponentItem, tsub)
+            if sub_object.name == "Nein":
+                comp_count = 0
+                break
+
     cr_f_result = wowi.create_component(
         name=component_cat_item.name,
-        count=count,
+        count=comp_count,
         component_catalog_id=component_cat_item.id,
         component_status_id=dest_component_status,
         facility_id=facility_id,
@@ -587,6 +595,14 @@ def edit_component(
         else:
             sub_components.append(config.getint("Handling", "bool_sub_component_no_id"))
 
+    comp_count = count
+    if not component_cat_item.is_bool:
+        for tsub in sub_components:
+            sub_object = db.session.get(UnderComponentItem, tsub)
+            if sub_object.name == "Nein":
+                comp_count = 0
+                break
+
     if puser is not None:
         puser.last_action = datetime.now()
 
@@ -625,7 +641,7 @@ def edit_component(
 
     local_count = int(the_component.count)
 
-    if component_subs == sub_components and local_comment == comment and local_count == count:
+    if component_subs == sub_components and local_comment == comment and local_count == comp_count:
         if puser is not None:
             db.session.commit()
         return True
@@ -644,7 +660,7 @@ def edit_component(
         component_id=component_id,
         facility_id=the_component.facility_id,
         name=component_cat_item.name,
-        count=count,
+        count=comp_count,
         component_catalog_id=component_cat_item.id,
         component_status_id=dest_component_status,
         under_component_ids=sub_components,
@@ -655,7 +671,7 @@ def edit_component(
     )
     _raise_for_result("edit_component", cr_f_result)
     logger.info(f"edit_component: Use Unit '{the_component.use_unit_id}' "
-                f"component '{component_id}' edited. Count: {count} "
+                f"component '{component_id}' edited. Count: {comp_count} "
                 f"facility_id: {the_component.facility_id} under_component_ids: '{str(sub_components)}' "
                 f"comment '{comment}'")
 
@@ -677,7 +693,7 @@ def edit_component(
             component_catalog_id=component_cat_item.id,
             sub_component_ids=psub_string,
             sub_component_names=sub_names,
-            quantity=count
+            quantity=comp_count
         )
 
     if unknown:
