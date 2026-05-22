@@ -1,7 +1,15 @@
 from flask import render_template, request, flash, abort, redirect, url_for
 from app.models import User, Role, FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem
-from app.models import (EventItem, Department, ResponsibleOfficial, CheckList, CheckListItem, ErpUseUnit,
-                        UseUnitTypeItem, ModPropMeasure)
+from app.models import (
+    EventItem,
+    Department,
+    ResponsibleOfficial,
+    CheckList,
+    CheckListItem,
+    ErpUseUnit,
+    UseUnitTypeItem,
+    ModPropMeasure,
+)
 from app.extensions import db
 from flask import current_app
 from flask_login import login_required, current_user
@@ -13,6 +21,18 @@ from sqlalchemy import func
 from app.entra_sync import sync_entra_users
 
 logger = logging.getLogger()
+
+
+def get_form_int(name: str) -> int | None:
+    value = request.form.get(name)
+
+    if value is None or value == "":
+        return None
+
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def register_routes_web(app):
@@ -144,16 +164,15 @@ def register_routes_web(app):
     @app.route("/admin/departments")
     @admin_required
     def admin_departments_list():
-        departments = Department.query.order_by(Department.name.asc(), Department.id.asc()).all()
+        departments = db.session.query(Department).order_by(Department.name.asc(), Department.id.asc()).all()
         return render_template("admin/departments_list.html", departments=departments)
 
     @app.route("/admin/departments/<int:department_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_departments_edit(department_id):
-        department = Department.query.get_or_404(department_id)
+        department = db.get_or_404(Department, department_id)
 
         if request.method == "POST":
-            # Nur visible darf geändert werden
             department.visible = bool(request.form.get("visible"))
             db.session.commit()
             flash("Abteilung wurde aktualisiert.", "success")
@@ -167,17 +186,19 @@ def register_routes_web(app):
     @app.route("/admin/officials")
     @admin_required
     def admin_officials_list():
-        officials = ResponsibleOfficial.query.order_by(ResponsibleOfficial.name.asc(),
-                                                       ResponsibleOfficial.id.asc()).all()
+        officials = (
+            db.session.query(ResponsibleOfficial)
+            .order_by(ResponsibleOfficial.name.asc(), ResponsibleOfficial.id.asc())
+            .all()
+        )
         return render_template("admin/officials_list.html", officials=officials)
 
     @app.route("/admin/officials/<int:official_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_officials_edit(official_id):
-        official = ResponsibleOfficial.query.get_or_404(official_id)
+        official = db.get_or_404(ResponsibleOfficial, official_id)
 
         if request.method == "POST":
-            # Nur visible darf geändert werden
             official.visible = bool(request.form.get("visible"))
             db.session.commit()
             flash("Ansprechpartner wurde aktualisiert.", "success")
@@ -191,7 +212,7 @@ def register_routes_web(app):
     @app.route("/admin/measures")
     @admin_required
     def admin_measures_list():
-        measures = ModPropMeasure.query.order_by(ModPropMeasure.name.asc(), ModPropMeasure.id.asc()).all()
+        measures = db.session.query(ModPropMeasure).order_by(ModPropMeasure.name.asc(), ModPropMeasure.id.asc()).all()
         return render_template("admin/measures_list.html", measures=measures)
 
     @app.route("/admin/measures/create", methods=["GET", "POST"])
@@ -199,14 +220,19 @@ def register_routes_web(app):
     def admin_measures_create():
         if request.method == "POST":
             name = (request.form.get("name") or "").strip()
-            erp_id = int(request.form.get("erp_id"))
-            if not name or not erp_id:
+            erp_id = get_form_int("erp_id")
+
+            if not name or erp_id is None:
                 flash("Name und ERP-ID sind Pflichtfelder.", "danger")
                 return redirect(url_for("admin_measures_create"))
 
-            measure = ModPropMeasure(name=name, erp_id=erp_id)
+            measure = ModPropMeasure()
+            measure.name = name
+            measure.erp_id = erp_id
+
             db.session.add(measure)
             db.session.commit()
+
             flash("Maßnahme wurde erstellt.", "success")
             return redirect(url_for("admin_measures_edit", measure_id=measure.id))
 
@@ -215,17 +241,21 @@ def register_routes_web(app):
     @app.route("/admin/measure/<int:measure_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_measures_edit(measure_id):
-        measure = ModPropMeasure.query.get_or_404(measure_id)
+        measure = db.get_or_404(ModPropMeasure, measure_id)
+
         if request.method == "POST" and request.form.get("_form") == "measure":
             name = (request.form.get("name") or "").strip()
-            erp_id = int(request.form.get("erp_id"))
-            if not name or not erp_id:
+            erp_id = get_form_int("erp_id")
+
+            if not name or erp_id is None:
                 flash("Name und erp_id sind Pflichtfelder.", "danger")
                 return redirect(url_for("admin_measures_edit", measure_id=measure.id))
 
             measure.name = name
             measure.erp_id = erp_id
+
             db.session.commit()
+
             flash("Maßnahme wurde aktualisiert.", "success")
             return redirect(url_for("admin_measures_edit", measure_id=measure.id))
 
@@ -237,9 +267,11 @@ def register_routes_web(app):
     @app.route("/admin/measure/<int:measure_id>/delete", methods=["POST"])
     @admin_required
     def admin_measures_delete(measure_id):
-        measure = ModPropMeasure.query.get_or_404(measure_id)
+        measure = db.get_or_404(ModPropMeasure, measure_id)
+
         db.session.delete(measure)
         db.session.commit()
+
         flash("Maßnahme wurde gelöscht.", "info")
         return redirect(url_for("admin_measures_list"))
 
@@ -249,7 +281,7 @@ def register_routes_web(app):
     @app.route("/admin/checklists")
     @admin_required
     def admin_checklists_list():
-        checklists = CheckList.query.order_by(CheckList.name.asc(), CheckList.id.asc()).all()
+        checklists = db.session.query(CheckList).order_by(CheckList.name.asc(), CheckList.id.asc()).all()
         return render_template("admin/checklists_list.html", checklists=checklists)
 
     @app.route("/admin/checklists/create", methods=["GET", "POST"])
@@ -257,13 +289,17 @@ def register_routes_web(app):
     def admin_checklists_create():
         if request.method == "POST":
             name = (request.form.get("name") or "").strip()
+
             if not name:
                 flash("Name ist ein Pflichtfeld.", "danger")
                 return redirect(url_for("admin_checklists_create"))
 
-            cl = CheckList(name=name)
+            cl = CheckList()
+            cl.name = name
+
             db.session.add(cl)
             db.session.commit()
+
             flash("Checkliste wurde erstellt.", "success")
             return redirect(url_for("admin_checklists_edit", checklist_id=cl.id))
 
@@ -272,22 +308,35 @@ def register_routes_web(app):
     @app.route("/admin/checklists/<int:checklist_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_checklists_edit(checklist_id):
-        checklist = CheckList.query.get_or_404(checklist_id)
+        checklist = db.get_or_404(CheckList, checklist_id)
 
-        # Checklisten-Name speichern (oben im gleichen Screen)
         if request.method == "POST" and request.form.get("_form") == "checklist":
             name = (request.form.get("name") or "").strip()
+
             if not name:
                 flash("Name ist ein Pflichtfeld.", "danger")
                 return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
             checklist.name = name
+
             db.session.commit()
+
             flash("Checkliste wurde aktualisiert.", "success")
             return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
-        departments = Department.query.filter_by(visible=True).order_by(Department.name.asc()).all()
-        officials = ResponsibleOfficial.query.filter_by(visible=True).order_by(ResponsibleOfficial.name.asc()).all()
+        departments = (
+            db.session.query(Department)
+            .filter_by(visible=True)
+            .order_by(Department.name.asc())
+            .all()
+        )
+        officials = (
+            db.session.query(ResponsibleOfficial)
+            .filter_by(visible=True)
+            .order_by(ResponsibleOfficial.name.asc())
+            .all()
+        )
+
         return render_template(
             "admin/checklist_form.html",
             checklist=checklist,
@@ -298,9 +347,11 @@ def register_routes_web(app):
     @app.route("/admin/checklists/<int:checklist_id>/delete", methods=["POST"])
     @admin_required
     def admin_checklists_delete(checklist_id):
-        checklist = CheckList.query.get_or_404(checklist_id)
+        checklist = db.get_or_404(CheckList, checklist_id)
+
         db.session.delete(checklist)
         db.session.commit()
+
         flash("Checkliste wurde gelöscht.", "info")
         return redirect(url_for("admin_checklists_list"))
 
@@ -310,7 +361,7 @@ def register_routes_web(app):
     @app.route("/admin/checklists/<int:checklist_id>/items/create", methods=["POST"])
     @admin_required
     def admin_checklist_items_create(checklist_id):
-        checklist = CheckList.query.get_or_404(checklist_id)
+        checklist = db.get_or_404(CheckList, checklist_id)
 
         description = (request.form.get("description") or "").strip()
         sub_description = (request.form.get("sub_description") or "").strip() or None
@@ -324,11 +375,19 @@ def register_routes_web(app):
         connect_use_unit = "connect_use_unit" in request.form
 
         if dest_erp_user_id:
-            if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
+            if not (
+                db.session.query(ResponsibleOfficial)
+                .filter_by(erp_user_id=dest_erp_user_id, visible=True)
+                .first()
+            ):
                 dest_erp_user_id = None
 
         if dest_erp_department_id:
-            if not Department.query.filter_by(id=dest_erp_department_id, visible=True).first():
+            if not (
+                db.session.query(Department)
+                .filter_by(id=dest_erp_department_id, visible=True)
+                .first()
+            ):
                 dest_erp_department_id = None
 
         if not description:
@@ -342,31 +401,31 @@ def register_routes_web(app):
         )
         next_pos = (max_pos or 0) + 10
 
-        item = CheckListItem(
-            position=next_pos,
-            description=description,
-            sub_description=sub_description,
-            ticket_subject=ticket_subject,
-            ticket_content=ticket_content,
-            dest_erp_user_id=dest_erp_user_id,
-            dest_erp_department_id=dest_erp_department_id,
-            enable_dest_contract=enable_dest_contract,
-            connect_building=connect_building,
-            connect_eco_unit=connect_eco_unit,
-            connect_use_unit=connect_use_unit,
-            check_list_id=checklist.id,
-        )
+        item = CheckListItem()
+        item.position = next_pos
+        item.description = description
+        item.sub_description = sub_description
+        item.ticket_subject = ticket_subject
+        item.ticket_content = ticket_content
+        item.dest_erp_user_id = dest_erp_user_id
+        item.dest_erp_department_id = dest_erp_department_id
+        item.enable_dest_contract = enable_dest_contract
+        item.connect_building = connect_building
+        item.connect_eco_unit = connect_eco_unit
+        item.connect_use_unit = connect_use_unit
+        item.check_list_id = checklist.id
 
         db.session.add(item)
         db.session.commit()
+
         flash("Checklisten-Item wurde angelegt.", "success")
         return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
     @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/edit", methods=["POST"])
     @admin_required
     def admin_checklist_items_edit(checklist_id, item_id):
-        checklist = CheckList.query.get_or_404(checklist_id)
-        item = CheckListItem.query.get_or_404(item_id)
+        checklist = db.get_or_404(CheckList, checklist_id)
+        item = db.get_or_404(CheckListItem, item_id)
 
         if item.check_list_id != checklist.id:
             abort(404)
@@ -383,11 +442,19 @@ def register_routes_web(app):
         connect_use_unit = "connect_use_unit" in request.form
 
         if dest_erp_user_id:
-            if not ResponsibleOfficial.query.filter_by(erp_user_id=dest_erp_user_id, visible=True).first():
+            if not (
+                db.session.query(ResponsibleOfficial)
+                .filter_by(erp_user_id=dest_erp_user_id, visible=True)
+                .first()
+            ):
                 dest_erp_user_id = None
 
         if dest_erp_department_id:
-            if not Department.query.filter_by(id=dest_erp_department_id, visible=True).first():
+            if not (
+                db.session.query(Department)
+                .filter_by(id=dest_erp_department_id, visible=True)
+                .first()
+            ):
                 dest_erp_department_id = None
 
         if not description:
@@ -406,37 +473,40 @@ def register_routes_web(app):
         item.connect_use_unit = connect_use_unit
 
         db.session.commit()
+
         flash("Checklisten-Item wurde aktualisiert.", "success")
         return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
     @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/delete", methods=["POST"])
     @admin_required
     def admin_checklist_items_delete(checklist_id, item_id):
-        checklist = CheckList.query.get_or_404(checklist_id)
-        item = CheckListItem.query.get_or_404(item_id)
+        checklist = db.get_or_404(CheckList, checklist_id)
+        item = db.get_or_404(CheckListItem, item_id)
 
         if item.check_list_id != checklist.id:
             abort(404)
 
         db.session.delete(item)
         db.session.commit()
+
         flash("Checklisten-Item wurde gelöscht.", "info")
         return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
     @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/move-up", methods=["POST"])
     @admin_required
     def admin_checklist_items_move_up(checklist_id, item_id):
-        checklist = CheckList.query.get_or_404(checklist_id)
-        item = CheckListItem.query.get_or_404(item_id)
+        checklist = db.get_or_404(CheckList, checklist_id)
+        item = db.get_or_404(CheckListItem, item_id)
+
         if item.check_list_id != checklist.id:
             abort(404)
 
         prev_item = (
-            CheckListItem.query
+            db.session.query(CheckListItem)
             .filter(CheckListItem.check_list_id == checklist.id)
             .filter(
-                (CheckListItem.position < item.position) |
-                ((CheckListItem.position == item.position) & (CheckListItem.id < item.id))
+                (CheckListItem.position < item.position)
+                | ((CheckListItem.position == item.position) & (CheckListItem.id < item.id))
             )
             .order_by(CheckListItem.position.desc(), CheckListItem.id.desc())
             .first()
@@ -447,24 +517,27 @@ def register_routes_web(app):
             return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
         item.position, prev_item.position = prev_item.position, item.position
+
         db.session.commit()
+
         flash("Item wurde nach oben verschoben.", "success")
         return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
     @app.route("/admin/checklists/<int:checklist_id>/items/<int:item_id>/move-down", methods=["POST"])
     @admin_required
     def admin_checklist_items_move_down(checklist_id, item_id):
-        checklist = CheckList.query.get_or_404(checklist_id)
-        item = CheckListItem.query.get_or_404(item_id)
+        checklist = db.get_or_404(CheckList, checklist_id)
+        item = db.get_or_404(CheckListItem, item_id)
+
         if item.check_list_id != checklist.id:
             abort(404)
 
         next_item = (
-            CheckListItem.query
+            db.session.query(CheckListItem)
             .filter(CheckListItem.check_list_id == checklist.id)
             .filter(
-                (CheckListItem.position > item.position) |
-                ((CheckListItem.position == item.position) & (CheckListItem.id > item.id))
+                (CheckListItem.position > item.position)
+                | ((CheckListItem.position == item.position) & (CheckListItem.id > item.id))
             )
             .order_by(CheckListItem.position.asc(), CheckListItem.id.asc())
             .first()
@@ -475,7 +548,9 @@ def register_routes_web(app):
             return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
         item.position, next_item.position = next_item.position, item.position
+
         db.session.commit()
+
         flash("Item wurde nach unten verschoben.", "success")
         return redirect(url_for("admin_checklists_edit", checklist_id=checklist.id))
 
@@ -496,9 +571,9 @@ def register_routes_web(app):
         column = sort_columns.get(sort, User.email)
 
         if direction == "desc":
-            users = User.query.order_by(column.desc(), User.id.asc()).all()
+            users = db.session.query(User).order_by(column.desc(), User.id.asc()).all()
         else:
-            users = User.query.order_by(column.asc(), User.id.asc()).all()
+            users = db.session.query(User).order_by(column.asc(), User.id.asc()).all()
 
         return render_template(
             "admin/users_list.html",
@@ -525,7 +600,7 @@ def register_routes_web(app):
 
             email = email.strip().lower()
 
-            if User.query.filter_by(email=email).first():
+            if db.session.query(User).filter_by(email=email).first():
                 flash("Es existiert bereits ein Benutzer mit dieser E-Mail.", "danger")
                 return redirect(url_for("admin_users_create"))
 
@@ -533,25 +608,27 @@ def register_routes_web(app):
                 flash("Rolle ist ein Pflichtfeld.", "danger")
                 return redirect(url_for("admin_users_create"))
 
-            role = Role.query.get(role_id)
+            role = db.session.get(Role, role_id)
+
             if not role:
                 flash("Ungültige Rolle.", "danger")
                 return redirect(url_for("admin_users_create"))
 
-            # noinspection PyArgumentList
-            user = User(
-                email=email,
-                is_active=is_active,
-                is_admin=is_admin,
-                name=name,
-                role_id=role.id
-            )
+            user = User()
+            user.email = email
+            user.is_active = is_active
+            user.is_admin = is_admin
+            user.name = name
+            user.role_id = role.id
             user.set_password(password)
+
             db.session.add(user)
             db.session.commit()
+
             flash("Benutzer wurde erstellt.", "success")
             return redirect(url_for("admin_users_list"))
-        roles = Role.query.order_by(Role.name.asc()).all()
+
+        roles = db.session.query(Role).order_by(Role.name.asc()).all()
         return render_template("admin/user_form.html", user=None, roles=roles)
 
     @app.route("/admin/users/sync-entra", methods=["POST"])
@@ -575,12 +652,12 @@ def register_routes_web(app):
     @app.route("/admin/users/<int:user_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_users_edit(user_id):
-        user = User.query.get_or_404(user_id)
+        user = db.get_or_404(User, user_id)
 
         if request.method == "POST":
             email = request.form.get("email")
             name = request.form.get("name")
-            password = request.form.get("password")  # optional
+            password = request.form.get("password")
             is_active = bool(request.form.get("is_active"))
             is_admin = bool(request.form.get("is_admin"))
             role_id = request.form.get("role_id", type=int)
@@ -591,7 +668,7 @@ def register_routes_web(app):
 
             email = email.strip().lower()
 
-            if User.query.filter(User.email == email, User.id != user.id).first():
+            if db.session.query(User).filter(User.email == email, User.id != user.id).first():
                 flash("Es existiert bereits ein anderer Benutzer mit dieser E-Mail.", "danger")
                 return redirect(url_for("admin_users_edit", user_id=user.id))
 
@@ -599,7 +676,8 @@ def register_routes_web(app):
                 flash("Rolle ist ein Pflichtfeld.", "danger")
                 return redirect(url_for("admin_users_edit", user_id=user.id))
 
-            role = Role.query.get(role_id)
+            role = db.session.get(Role, role_id)
+
             if not role:
                 flash("Ungültige Rolle.", "danger")
                 return redirect(url_for("admin_users_edit", user_id=user.id))
@@ -614,17 +692,18 @@ def register_routes_web(app):
                 user.set_password(password)
 
             db.session.commit()
+
             flash("Benutzer wurde aktualisiert.", "success")
             return redirect(url_for("admin_users_list"))
 
-        roles = Role.query.order_by(Role.name.asc()).all()
+        roles = db.session.query(Role).order_by(Role.name.asc()).all()
         return render_template("admin/user_form.html", user=user, roles=roles)
 
     # Benutzer löschen
     @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
     @admin_required
     def admin_users_delete(user_id):
-        user = User.query.get_or_404(user_id)
+        user = db.get_or_404(User, user_id)
 
         if user.id == current_user.id:
             flash("Du kannst dich nicht selbst löschen.", "danger")
@@ -632,19 +711,20 @@ def register_routes_web(app):
 
         db.session.delete(user)
         db.session.commit()
+
         flash("Benutzer wurde gelöscht.", "info")
         return redirect(url_for("admin_users_list"))
 
     @app.route("/admin/roles")
     @admin_required
     def admin_roles_list():
-        roles = Role.query.order_by(Role.name.asc()).all()
+        roles = db.session.query(Role).order_by(Role.name.asc()).all()
         return render_template("admin/roles_list.html", roles=roles)
 
     @app.route("/admin/roles/create", methods=["GET", "POST"])
     @admin_required
     def admin_roles_create():
-        components = ComponentCatalogItem.query.order_by(ComponentCatalogItem.name.asc()).all()
+        components = db.session.query(ComponentCatalogItem).order_by(ComponentCatalogItem.name.asc()).all()
 
         if request.method == "POST":
             name = (request.form.get("name") or "").strip()
@@ -654,18 +734,24 @@ def register_routes_web(app):
                 flash("Name ist ein Pflichtfeld.", "danger")
                 return redirect(url_for("admin_roles_create"))
 
-            role = Role(name=name)
+            role = Role()
+            role.name = name
+
             db.session.add(role)
             db.session.flush()
 
             selected_components = []
             if component_ids:
-                selected_components = ComponentCatalogItem.query.filter(
-                    ComponentCatalogItem.id.in_(component_ids)
-                ).all()
+                selected_components = (
+                    db.session.query(ComponentCatalogItem)
+                    .filter(ComponentCatalogItem.id.in_(component_ids))
+                    .all()
+                )
+
             role.components = selected_components
 
             db.session.commit()
+
             flash("Rolle wurde erstellt.", "success")
             return redirect(url_for("admin_roles_list"))
 
@@ -674,8 +760,8 @@ def register_routes_web(app):
     @app.route("/admin/roles/<int:role_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_roles_edit(role_id):
-        role = Role.query.get_or_404(role_id)
-        components = ComponentCatalogItem.query.order_by(ComponentCatalogItem.name.asc()).all()
+        role = db.get_or_404(Role, role_id)
+        components = db.session.query(ComponentCatalogItem).order_by(ComponentCatalogItem.name.asc()).all()
 
         if request.method == "POST":
             name = (request.form.get("name") or "").strip()
@@ -689,12 +775,16 @@ def register_routes_web(app):
 
             selected_components = []
             if component_ids:
-                selected_components = ComponentCatalogItem.query.filter(
-                    ComponentCatalogItem.id.in_(component_ids)
-                ).all()
+                selected_components = (
+                    db.session.query(ComponentCatalogItem)
+                    .filter(ComponentCatalogItem.id.in_(component_ids))
+                    .all()
+                )
+
             role.components = selected_components
 
             db.session.commit()
+
             flash("Rolle wurde aktualisiert.", "success")
             return redirect(url_for("admin_roles_list"))
 
@@ -703,7 +793,7 @@ def register_routes_web(app):
     @app.route("/admin/roles/<int:role_id>/delete", methods=["POST"])
     @admin_required
     def admin_roles_delete(role_id):
-        role = Role.query.get_or_404(role_id)
+        role = db.get_or_404(Role, role_id)
 
         if db.session.query(User.id).filter(User.role_id == role.id).first():
             flash("Rolle kann nicht gelöscht werden, solange Benutzer zugeordnet sind.", "danger")
@@ -711,6 +801,7 @@ def register_routes_web(app):
 
         db.session.delete(role)
         db.session.commit()
+
         flash("Rolle wurde gelöscht.", "info")
         return redirect(url_for("admin_roles_list"))
 
@@ -721,13 +812,11 @@ def register_routes_web(app):
     @admin_required
     def admin_facilities_list():
         """List facility catalog items with search, filters and pagination."""
-        # Basic query parameters for UX
         page = request.args.get("page", 1, type=int)
         q = (request.args.get("q") or "").strip()
 
-        query = FacilityCatalogItem.query
+        query = db.session.query(FacilityCatalogItem)
 
-        # Apply search filter (case-insensitive) – limited to a few fields
         if q:
             like = f"%{q}%"
             query = query.filter(
@@ -738,10 +827,8 @@ def register_routes_web(app):
                 )
             )
 
-        # Default ordering
         query = query.order_by(FacilityCatalogItem.name.asc())
 
-        # Pagination – moderate page size for performance
         pagination = query.paginate(page=page, per_page=25, error_out=False)
         facilities = pagination.items
 
@@ -749,14 +836,14 @@ def register_routes_web(app):
             "admin/facilities_list.html",
             facilities=facilities,
             pagination=pagination,
-            q=q
+            q=q,
         )
 
     @app.route("/admin/facilities/<int:facility_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_facilities_edit(facility_id):
         """Edit custom data of a single facility catalog item."""
-        facility = FacilityCatalogItem.query.get_or_404(facility_id)
+        facility = db.get_or_404(FacilityCatalogItem, facility_id)
 
         if request.method == "POST":
             view_folded = bool(request.form.get("view_folded"))
@@ -766,6 +853,7 @@ def register_routes_web(app):
             facility.view_folded = view_folded
 
             db.session.commit()
+
             flash("Ausstattungsgruppe wurde aktualisiert.", "success")
             return redirect(url_for("admin_facilities_list"))
 
@@ -780,10 +868,10 @@ def register_routes_web(app):
         """List component catalog items with search, filters and pagination."""
         page = request.args.get("page", 1, type=int)
         q = (request.args.get("q") or "").strip()
-        status_filter = request.args.get("status")  # "active", "inactive" or None
+        status_filter = request.args.get("status")
         selected_use_unit_type_id = request.args.get("use_unit_type_id", type=int)
 
-        query = ComponentCatalogItem.query.join(FacilityCatalogItem, isouter=True)
+        query = db.session.query(ComponentCatalogItem).join(FacilityCatalogItem, isouter=True)
 
         if q:
             like = f"%{q}%"
@@ -813,7 +901,7 @@ def register_routes_web(app):
         pagination = query.paginate(page=page, per_page=25, error_out=False)
         components = pagination.items
 
-        use_unit_type_items = UseUnitTypeItem.query.order_by(UseUnitTypeItem.id.asc()).all()
+        use_unit_type_items = db.session.query(UseUnitTypeItem).order_by(UseUnitTypeItem.id.asc()).all()
 
         return render_template(
             "admin/components_list.html",
@@ -829,7 +917,7 @@ def register_routes_web(app):
     @admin_required
     def admin_components_edit(component_id):
         """Edit custom data of a single component catalog item."""
-        component = ComponentCatalogItem.query.get_or_404(component_id)
+        component = db.get_or_404(ComponentCatalogItem, component_id)
 
         if request.method == "POST":
             enabled = bool(request.form.get("enabled"))
@@ -851,13 +939,15 @@ def register_routes_web(app):
 
             selected_roles = []
             if role_ids:
-                selected_roles = Role.query.filter(Role.id.in_(role_ids)).all()
+                selected_roles = db.session.query(Role).filter(Role.id.in_(role_ids)).all()
 
             selected_use_unit_types = []
             if valid_use_unit_type_ids:
-                selected_use_unit_types = UseUnitTypeItem.query.filter(
-                    UseUnitTypeItem.id.in_(valid_use_unit_type_ids)
-                ).all()
+                selected_use_unit_types = (
+                    db.session.query(UseUnitTypeItem)
+                    .filter(UseUnitTypeItem.id.in_(valid_use_unit_type_ids))
+                    .all()
+                )
 
             component.enabled = enabled
             component.custom_name = custom_name
@@ -869,12 +959,13 @@ def register_routes_web(app):
             component.valid_use_unit_types = selected_use_unit_types
 
             db.session.commit()
+
             flash("Merkmal wurde aktualisiert.", "success")
             return redirect(url_for("admin_components_list"))
 
-        roles = Role.query.order_by(Role.name.asc()).all()
-        under_components = UnderComponentItem.query.order_by(UnderComponentItem.name.asc()).all()
-        use_unit_type_items = UseUnitTypeItem.query.order_by(UseUnitTypeItem.code.asc()).all()
+        roles = db.session.query(Role).order_by(Role.name.asc()).all()
+        under_components = db.session.query(UnderComponentItem).order_by(UnderComponentItem.name.asc()).all()
+        use_unit_type_items = db.session.query(UseUnitTypeItem).order_by(UseUnitTypeItem.code.asc()).all()
 
         return render_template(
             "admin/component_form.html",
@@ -894,7 +985,7 @@ def register_routes_web(app):
         page = request.args.get("page", 1, type=int)
         q = (request.args.get("q") or "").strip()
 
-        query = UnderComponentItem.query
+        query = db.session.query(UnderComponentItem)
 
         if q:
             like = f"%{q}%"
@@ -914,14 +1005,14 @@ def register_routes_web(app):
             "admin/under_components_list.html",
             under_components=under_components,
             pagination=pagination,
-            q=q
+            q=q,
         )
 
     @app.route("/admin/under_components/<int:under_component_id>/edit", methods=["GET", "POST"])
     @admin_required
     def admin_under_components_edit(under_component_id):
         """Edit custom data of a single under component item."""
-        under_component = UnderComponentItem.query.get_or_404(under_component_id)
+        under_component = db.get_or_404(UnderComponentItem, under_component_id)
 
         if request.method == "POST":
             custom_name = request.form.get("custom_name") or None
@@ -929,18 +1020,22 @@ def register_routes_web(app):
 
             selected_components = []
             if component_ids:
-                selected_components = ComponentCatalogItem.query.filter(
-                    ComponentCatalogItem.id.in_(component_ids)
-                ).all()
+                selected_components = (
+                    db.session.query(ComponentCatalogItem)
+                    .filter(ComponentCatalogItem.id.in_(component_ids))
+                    .all()
+                )
 
             under_component.custom_name = custom_name
             under_component.components = selected_components
 
             db.session.commit()
+
             flash("Merkmalausprägung wurde aktualisiert.", "success")
             return redirect(url_for("admin_under_components_list"))
 
-        components = ComponentCatalogItem.query.order_by(ComponentCatalogItem.name.asc()).all()
+        components = db.session.query(ComponentCatalogItem).order_by(ComponentCatalogItem.name.asc()).all()
+
         return render_template(
             "admin/under_component_form.html",
             under_component=under_component,
@@ -956,7 +1051,7 @@ def register_routes_web(app):
         user_name = (request.args.get("user_name") or "").strip()
         use_unit_idnum = (request.args.get("use_unit_idnum") or "").strip()
 
-        query = EventItem.query
+        query = db.session.query(EventItem)
 
         from datetime import datetime, timedelta, time
 
@@ -972,6 +1067,7 @@ def register_routes_web(app):
 
         if df:
             query = query.filter(EventItem.stamp >= datetime.combine(df, time.min))
+
         if dt:
             query = query.filter(EventItem.stamp < datetime.combine(dt + timedelta(days=1), time.min))
 
@@ -995,18 +1091,34 @@ def register_routes_web(app):
                         sub_ids.add(int(part))
 
         facility_map = (
-            {f.id: f.display_name for f in FacilityCatalogItem.query.filter(FacilityCatalogItem.id.in_(fac_ids)).all()}
+            {
+                f.id: f.display_name
+                for f in db.session.query(FacilityCatalogItem)
+                .filter(FacilityCatalogItem.id.in_(fac_ids))
+                .all()
+            }
             if fac_ids
             else {}
         )
+
         component_map = (
-            {c.id: c.display_name for c in
-             ComponentCatalogItem.query.filter(ComponentCatalogItem.id.in_(comp_ids)).all()}
+            {
+                c.id: c.display_name
+                for c in db.session.query(ComponentCatalogItem)
+                .filter(ComponentCatalogItem.id.in_(comp_ids))
+                .all()
+            }
             if comp_ids
             else {}
         )
+
         under_component_map = (
-            {u.id: u.display_name for u in UnderComponentItem.query.filter(UnderComponentItem.id.in_(sub_ids)).all()}
+            {
+                u.id: u.display_name
+                for u in db.session.query(UnderComponentItem)
+                .filter(UnderComponentItem.id.in_(sub_ids))
+                .all()
+            }
             if sub_ids
             else {}
         )
@@ -1014,18 +1126,23 @@ def register_routes_web(app):
         rows = []
         for e in events:
             sc_names = []
+
             if e.sub_component_ids:
                 for part in str(e.sub_component_ids).split(","):
                     part = part.strip()
+
                     if part.isdigit():
                         sc_names.append(under_component_map.get(int(part), part))
                     elif part:
                         sc_names.append(part)
+
             use_unit: ErpUseUnit
             use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == e.use_unit_id).first()
+
             uu_idnum: str | None
             if use_unit:
                 uu_idnum = use_unit.erp_idnum
+
                 if use_unit_idnum:
                     if not uu_idnum.startswith(use_unit_idnum):
                         continue
@@ -1038,8 +1155,12 @@ def register_routes_web(app):
                     "user_name": e.user_name,
                     "action": e.action,
                     "use_unit_idnum": uu_idnum,
-                    "component_name": component_map.get(e.component_catalog_id) if e.component_catalog_id else None,
-                    "facility_name": facility_map.get(e.facility_catalog_id) if e.facility_catalog_id else None,
+                    "component_name": component_map.get(e.component_catalog_id)
+                    if e.component_catalog_id
+                    else None,
+                    "facility_name": facility_map.get(e.facility_catalog_id)
+                    if e.facility_catalog_id
+                    else None,
                     "sub_component_names": ", ".join(sc_names) if sc_names else None,
                 }
             )
@@ -1070,15 +1191,20 @@ def register_routes_web(app):
         df = parse_date(date_from) if date_from else None
         dt = parse_date(date_to) if date_to else None
 
-        query = EventItem.query.filter(EventItem.action.in_(["create", "edit"]))
+        query = db.session.query(EventItem).filter(EventItem.action.in_(["create", "edit"]))
 
         if df:
             query = query.filter(EventItem.stamp >= datetime.combine(df, time.min))
+
         if dt:
             query = query.filter(EventItem.stamp < datetime.combine(dt + timedelta(days=1), time.min))
 
-        query = query.order_by(EventItem.user_name.asc(), EventItem.use_unit_id.asc(), EventItem.stamp.asc(),
-                               EventItem.id.asc())
+        query = query.order_by(
+            EventItem.user_name.asc(),
+            EventItem.use_unit_id.asc(),
+            EventItem.stamp.asc(),
+            EventItem.id.asc(),
+        )
 
         cooldown = timedelta(days=7)
 
@@ -1088,6 +1214,7 @@ def register_routes_web(app):
         for e in query.yield_per(2000):
             if not e.user_name:
                 continue
+
             if not e.use_unit_id:
                 continue
 
@@ -1099,11 +1226,13 @@ def register_routes_web(app):
                 continue
 
             user_units = last_scored.get(user_key)
+
             if user_units is None:
                 user_units = {}
                 last_scored[user_key] = user_units
 
             last_time = user_units.get(unit_key)
+
             if last_time is None or t >= last_time + cooldown:
                 points_by_user[user_key] = points_by_user.get(user_key, 0) + 1
                 user_units[unit_key] = t

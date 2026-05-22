@@ -60,6 +60,7 @@ def _extract_http_status(exc) -> int | None:
     code = getattr(exc, "status_code", None)
     if code is not None:
         try:
+            # noinspection PyTypeChecker
             return int(code)
         except Exception as e:
             print(str(e))
@@ -119,6 +120,7 @@ def _raise_for_result(op_name: str, result: Result):
     if status is None:
         raise WowiTransientError(f"{op_name}: missing status_code")
 
+    # noinspection PyTypeChecker
     status = int(status)
 
     if 200 <= status < 300:
@@ -149,6 +151,7 @@ def sync_facility_catalog(wowi: WowiPy):
             find_facility.available_economic_unit_land = entry.available_economic_unit_land
             find_facility.repair_relevance = entry.repair_relevance
         else:
+            # noinspection PyArgumentList
             find_facility = FacilityCatalogItem(
                 id=entry.id_,
                 name=entry.name,
@@ -180,6 +183,7 @@ def sync_facility_items(wowi: WowiPy):
             find_fac.name = entry_fac.name
             find_fac.facility_catalog_item_id = entry_fac.facility_catalog_id
         else:
+            # noinspection PyArgumentList
             find_fac = FacilityItem(
                 id=entry_fac.id_,
                 name=entry_fac.name,
@@ -215,6 +219,7 @@ def sync_component_catalog(wowi: WowiPy):
             find_component.is_metering_device = entry2.is_metering_device
             find_component.facility_catalog_item_id = entry2.facility_catalog_id
         else:
+            # noinspection PyArgumentList
             find_component = ComponentCatalogItem(
                 id=entry2.id_,
                 name=entry2.name,
@@ -258,6 +263,7 @@ def sync_under_component_catalog(wowi: WowiPy):
         if find_under_component:
             find_under_component.name = entry3.name
         else:
+            # noinspection PyArgumentList
             find_under_component = UnderComponentItem(
                 id=entry3.id_,
                 name=entry3.name
@@ -282,6 +288,7 @@ def sync_estate_picture_types(wowi: WowiPy):
             find_pic_type.name = entry3.name
             find_pic_type.code = entry3.code
         else:
+            # noinspection PyArgumentList
             find_pic_type = EstatePictureType(
                 id=entry3.id_,
                 name=entry3.name,
@@ -306,6 +313,7 @@ def sync_media_entities(wowi: WowiPy):
         if find_type:
             find_type.name = entry3.name
         else:
+            # noinspection PyArgumentList
             find_type = MediaEntity(
                 id=entry3.id_,
                 name=entry3.name
@@ -327,6 +335,7 @@ def sync_departments(wowi: WowiPy):
             find_dep.name = pdep.name
             find_dep.idnum = pdep.id_num
         else:
+            # noinspection PyArgumentList
             new_dep = Department(
                 id=pdep.id_,
                 idnum=pdep.id_num,
@@ -337,16 +346,21 @@ def sync_departments(wowi: WowiPy):
             find_dep = new_dep
         return find_dep
 
-    def update_resp(presp: wowipy.models.ResponsibleOfficial):
+    def update_resp(presp: wowipy.models.ResponsibleOfficialShort):
         wowi_resp = wowi.get_responsible_officials(person_id=presp.person_id)[0]
         find_resp = db.session.get(ResponsibleOfficial, wowi_resp.id_)
         if find_resp:
+            if not wowi_resp.person or not wowi_resp.person.natural_person:
+                return 0
             find_resp.name = (f"{wowi_resp.person.natural_person.last_name}, "
                               f"{wowi_resp.person.natural_person.first_name}")
             find_resp.short = wowi_resp.code_short
             find_resp.erp_person_id = wowi_resp.person_id
             find_resp.erp_user_id = wowi_resp.user_id
         else:
+            if not wowi_resp.person or not wowi_resp.person.natural_person:
+                return 0
+            # noinspection PyArgumentList
             new_resp = ResponsibleOfficial(
                 id=wowi_resp.id_,
                 name=(f"{wowi_resp.person.natural_person.last_name}, "
@@ -369,6 +383,8 @@ def sync_departments(wowi: WowiPy):
         dep_ids.add(tdep.id_)
         update_dep(tdep)
 
+        if tdep.responsible_officials is None:
+            continue
         for tresp in tdep.responsible_officials:
             if tresp.id_ not in resp_ids_global:
                 resp_ids_global.add(tresp.id_)
@@ -445,6 +461,7 @@ def create_facility(wowi: WowiPy, facility_catalog_id: int, use_unit_id: int) ->
     logger.info(f"create_facility: Use Unit '{use_unit_id}' "
                 f"facility '{cr_f_result.data['Id']}' with name '{facility_cat_item.name}' created. ")
 
+    # noinspection PyArgumentList
     new_facility_for_db = FacilityItem(
         id=cr_f_result.data["Id"],
         name=facility_cat_item.name,
@@ -531,6 +548,7 @@ def create_component(
     except Exception as e:
         logger.error(f"create_component: Error while getting event info: {str(e)}")
 
+    # noinspection PyArgumentList
     new_event = EventItem(
         user_id=puser.id,
         user_name=puser.name,
@@ -642,6 +660,7 @@ def edit_component(
     local_count = int(the_component.count)
 
     if component_subs == sub_components and local_comment == comment and local_count == comp_count:
+        # No change detected
         if puser is not None:
             db.session.commit()
         return True
@@ -655,6 +674,10 @@ def edit_component(
     #
     # print(the_component.under_components)
     # print(psub_components)
+
+    if the_component.facility_id is None:
+        logger.error(f"edit_component: Component {the_component.id_} has no facility id")
+        return True
 
     cr_f_result = wowi.edit_component(
         component_id=component_id,
@@ -677,6 +700,7 @@ def edit_component(
 
     new_event = None
     if puser is not None:
+        # noinspection PyArgumentList
         new_event = EventItem(
             user_id=puser.id,
             user_name=puser.name,
@@ -712,7 +736,7 @@ def edit_component(
 
 
 def get_responsible_official(wowi: WowiPy, use_unit_id: int, department_id: int) -> ResponsibleOfficial | None:
-    uu = db.session.get(ErpUseUnit, use_unit_id)
+    uu = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_id)
     if not uu:
         logger.error(f"get_responsible_official: UseUnit '{use_unit_id}' not found in db")
         return None
@@ -934,6 +958,7 @@ def sync_use_units(wowi: WowiPy):
             find_use_unit.is_cancelled = contract_is_cancelled
             find_use_unit.description_of_position = entry.description_of_position
         else:
+            # noinspection PyArgumentList
             find_use_unit = ErpUseUnit(
                 use_unit_type=uu_type,
                 erp_id=entry.id_,
@@ -1011,6 +1036,7 @@ def sync_buildings(wowi: WowiPy):
             find_building.town = entry.estate_address.town
             find_building.street_complete = entry.estate_address.street_complete
         else:
+            # noinspection PyArgumentList
             find_use_unit = GeoBuilding(
                 building_type=b_type,
                 erp_id=entry.id_,

@@ -24,10 +24,14 @@ MAX_FILES = 20
 ALLOWED_EXT = {".jpg", ".jpeg", ".png"}
 
 
-def format_contracts(contracts: list[wowipy.models.LicenseAgreement]) -> list[dict]:
+def format_contracts(contracts: list[wowipy.models.LicenseAgreement] | None) -> list[dict]:
     retval = []
+    if contracts is None:
+        return retval
     for tcontract in contracts:
         contractor_name = "Unbekannt"
+        if tcontract.contractors is None:
+            continue
         for x in tcontract.contractors:
             if x.contractor_type.name == "1. Vertragsnehmer":
                 contractor_name = x.person.name
@@ -113,7 +117,7 @@ def register_routes_api_ticket(app):
 
         current_user_id = int(get_jwt_identity())
         ip_address = request.environ.get("REMOTE_ADDR")
-        user = User.query.get(current_user_id)
+        user = db.session.get(User, current_user_id)
         last_lat = getattr(user, "last_lat", None) if user else None
         last_lon = getattr(user, "last_lon", None) if user else None
 
@@ -127,7 +131,7 @@ def register_routes_api_ticket(app):
             department_id = None
 
         if department_id:
-            resp: ResponsibleOfficial
+            resp: ResponsibleOfficial | None
             resp = get_responsible_official(wowi, use_unit_id, department_id)
             if not resp:
                 return jsonify({"msg": f"Cannot determin official for UseUnit {use_unit_id} "
@@ -229,6 +233,7 @@ def register_routes_api_ticket(app):
             return jsonify({"error": f"max {MAX_FILES} photos"}), 400
 
         try:
+            # noinspection PyArgumentList
             new_event = EventItem(
                 user_id=current_user_id,
                 user_name=user.name,
