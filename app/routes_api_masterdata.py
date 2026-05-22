@@ -20,7 +20,7 @@ SCOPE_ADDRESS = "address"
 logger = logging.getLogger()
 
 
-def tokenize_fulltext(fulltext: str):
+def tokenize_fulltext(fulltext: str | None):
     ft = (fulltext or "").strip()
     if not ft:
         return []
@@ -80,7 +80,7 @@ def register_routes_api_masterdata(app):
             locations_found = locations_found[:limit]
         return locations_found
 
-    def apply_fulltext(query, fulltext: str, search_scope: str):
+    def apply_fulltext(query, fulltext: str | None, search_scope: str):
         tokens = tokenize_fulltext(fulltext)
         if not tokens:
             return query
@@ -95,7 +95,6 @@ def register_routes_api_masterdata(app):
                 GeoBuilding.town.ilike(like),
                 GeoBuilding.erp_idnum.ilike(like),
             )
-
             tenant_exists = (
                 build_tenant_query(
                     db.session.query(ErpUseUnit.id)
@@ -145,6 +144,7 @@ def register_routes_api_masterdata(app):
         distance_map = {}
 
         try:
+            # noinspection PyTypeChecker
             limit = int(param_limit)
         except (ValueError, TypeError):
             limit = LIMIT_DEFAULT
@@ -153,7 +153,7 @@ def register_routes_api_masterdata(app):
             limit = LIMIT_MAX
 
         current_user_id = int(get_jwt_identity())
-        user: User = User.query.get(current_user_id)
+        user: User = db.session.get(User, current_user_id)
         user.last_action = datetime.now()
         user.last_lat = param_lat
         user.last_lon = param_lon

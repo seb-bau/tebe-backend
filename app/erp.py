@@ -541,7 +541,7 @@ def create_component(
                 sub_component_names.append(tsub_obj.name)
             sub_names = ",".join(sub_component_names)
             sub_names = sub_names[:250]
-        uu = db.session.get(ErpUseUnit, puu_id)
+        uu = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == puu_id).first()
         if uu:
             uu_idnum = uu.erp_idnum
 
@@ -634,7 +634,7 @@ def edit_component(
                 sub_component_names.append(tsub_obj.name)
             sub_names = ",".join(sub_component_names)
             sub_names = sub_names[:250]
-        uu = db.session.get(ErpUseUnit, the_component.use_unit_id)
+        uu = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == the_component.use_unit_id).first()
         if uu:
             uu_idnum = uu.erp_idnum
 
