@@ -736,7 +736,7 @@ def edit_component(
 
 
 def get_responsible_official(wowi: WowiPy, use_unit_id: int, department_id: int) -> ResponsibleOfficial | None:
-    uu = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_id)
+    uu = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_id).first()
     if not uu:
         logger.error(f"get_responsible_official: UseUnit '{use_unit_id}' not found in db")
         return None
