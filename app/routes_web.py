@@ -926,6 +926,7 @@ def register_routes_web(app):
             hide_quantity = bool(request.form.get("hide_quantity"))
             custom_name = request.form.get("custom_name") or None
             hint = request.form.get("hint") or None
+            readonly = bool(request.form.get("readonly"))
 
             role_ids = request.form.getlist("role_ids")
             valid_use_unit_type_ids = request.form.getlist("valid_use_unit_type_ids")
@@ -955,6 +956,7 @@ def register_routes_web(app):
             component.single_under_component = single_under_component
             component.hide_quantity = hide_quantity
             component.hint = hint
+            component.readonly = readonly
             component.roles = selected_roles
             component.valid_use_unit_types = selected_use_unit_types
 

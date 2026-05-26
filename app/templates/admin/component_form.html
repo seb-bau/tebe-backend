@@ -104,6 +104,18 @@
             </label>
         </div>
 
+        <div class="form-check form-switch mb-4">
+            <input class="form-check-input"
+                   type="checkbox"
+                   id="readonly"
+                   name="readonly"
+                   value="1"
+                   {% if component.readonly %}checked{% endif %}>
+            <label class="form-check-label" for="readonly">
+                Schreibgeschütztes Merkmal
+            </label>
+        </div>
+
         <div class="mb-4">
             <label for="valid_use_unit_type_ids" class="form-label">Gültige Nutzungsarten</label>
             <select class="form-select" id="valid_use_unit_type_ids" name="valid_use_unit_type_ids" multiple size="6">

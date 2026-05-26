@@ -269,6 +269,7 @@ class ComponentCatalogItem(db.Model):
     single_under_component = db.Column(db.Boolean, default=False)
     hide_quantity = db.Column(db.Boolean, default=False)
     hint = db.Column(db.Text, nullable=True)
+    readonly = db.Column(db.Boolean, default=False)
 
     # connections
     facility_catalog_item_id = db.Column(

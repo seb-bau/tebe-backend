@@ -93,11 +93,11 @@ def register_routes_api_inventory(app):
             return _json_from_file(current_app.config['DEMO_CUR_DATA'])
 
         current_user_id = int(get_jwt_identity())
-        user = User.query.get(current_user_id)
+        user = db.session.get(User, current_user_id)
         if not user or not user.role_id:
             return jsonify({"msg": "user has no role"}), 403
 
-        erp_use_unit = ErpUseUnit.query.filter_by(erp_id=use_unit_id).first()
+        erp_use_unit = db.session.query(ErpUseUnit).filter_by(erp_id=use_unit_id).first()
         if not erp_use_unit:
             return jsonify({"msg": f"local erp_use_unit for use_unit_id '{use_unit_id}' not found"}), 404
 
@@ -149,7 +149,8 @@ def register_routes_api_inventory(app):
                     )
                     if delete_option:
                         try:
-                            wowi.delete_component(component.facility_id, component.id_)
+                            facility_id = component.facility_id or 0
+                            wowi.delete_component(facility_id, component.id_)
                             logger.warning(
                                 f"uu_current_data: Deleted component {component.id_} because of incorrect selection."
                             )
@@ -202,7 +203,8 @@ def register_routes_api_inventory(app):
                     "single_under_component": comp_cat_item.single_under_component,
                     "hide_quantity": comp_cat_item.hide_quantity,
                     "comment": component.comment,
-                    "hint": comp_cat_item.hint
+                    "hint": comp_cat_item.hint,
+                    "readonly": comp_cat_item.readonly
                 })
                 found_types.append(comp_cat_item.id)
 
@@ -227,7 +229,8 @@ def register_routes_api_inventory(app):
                         "is_bool": cat_item.is_bool,
                         "single_under_component": cat_item.single_under_component,
                         "hide_quantity": cat_item.hide_quantity,
-                        "hint": cat_item.hint
+                        "hint": cat_item.hint,
+                        "readonly": cat_item.readonly
                     })
 
             return {
@@ -254,7 +257,7 @@ def register_routes_api_inventory(app):
 
         current_user_id = int(get_jwt_identity())
         ip_address = request.environ.get("REMOTE_ADDR")
-        user = User.query.get(current_user_id)
+        user = db.session.get(User, current_user_id)
         last_lat = getattr(user, "last_lat", None) if user else None
         last_lon = getattr(user, "last_lon", None) if user else None
 

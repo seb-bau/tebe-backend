@@ -60,6 +60,7 @@
                     <th>Aktiv</th>
                     <th>Boolscher Wert</th>
                     <th>Single Sub</th>
+                    <th>Readonly</th>
                     <th></th>
                 </tr>
                 </thead>
@@ -110,6 +111,14 @@
 
                         <td>
                             {% if component.single_under_component %}
+                                <span class="badge bg-success">Ja</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Nein</span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if component.readonly %}
                                 <span class="badge bg-success">Ja</span>
                             {% else %}
                                 <span class="badge bg-secondary">Nein</span>
