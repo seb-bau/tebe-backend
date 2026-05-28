@@ -19,6 +19,7 @@ def _extract_http_status(exc) -> int | None:
     code = getattr(exc, "status_code", None)
     if code is not None:
         try:
+            # noinspection PyTypeChecker
             return int(code)
         except Exception as e:
             print(str(e))
@@ -130,6 +131,7 @@ def register_tasks(celery):
                 except Exception as ex:
                     logger.error(f"upload_erp_photo: Error while collecting event data: {str(ex)}")
 
+                # noinspection PyArgumentList
                 new_event = EventItem(
                     user_id=user_id,
                     user_name=user.name if user else None,
@@ -204,7 +206,7 @@ def register_tasks(celery):
                         user.last_lat = last_lat
                         user.last_lon = last_lon
                         db.session.commit()
-
+                # noinspection PyArgumentList
                 new_event = EventItem(
                     user_id=user_id,
                     user_name=user.name if user else None,
@@ -248,7 +250,7 @@ def register_tasks(celery):
 
                 user = None
                 if user_id is not None:
-                    user = User.query.get(int(user_id))
+                    user = db.session.get(User, int(user_id))
                     if user:
                         user.last_action = datetime.now()
                         user.last_ip = ip_address
@@ -262,6 +264,8 @@ def register_tasks(celery):
                         raise PermanentRequestError("missing component_catalog_id")
 
                     comp_cat_item = db.session.get(ComponentCatalogItem, comp_cat_id)
+                    if comp_cat_item.readonly:
+                        continue
                     if not comp_cat_item:
                         raise PermanentRequestError(f"unknown component_catalog_id={comp_cat_id}")
 
@@ -313,6 +317,7 @@ def register_tasks(celery):
                         logger.info(f"Created component {new_component_id} for use_unit_id={uu_id}")
                     else:
                         unknown = bool(entry.get("is_unknown"))
+                        # noinspection PyTypeChecker
                         r = edit_component(
                             wowi,
                             component_id=int(component_id),

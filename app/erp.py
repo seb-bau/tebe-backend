@@ -14,6 +14,7 @@ from datetime import datetime
 import re
 import os
 import tempfile
+from typing import Optional
 
 logger = logging.getLogger()
 
@@ -477,7 +478,7 @@ def create_component(
         component_catalog_id: int,
         facility_id: int,
         count: int,
-        puser: User,
+        puser: Optional[User],
         puu_id: int,
         psub_components: list[int] = None,
         comment: str = None,
@@ -548,10 +549,13 @@ def create_component(
     except Exception as e:
         logger.error(f"create_component: Error while getting event info: {str(e)}")
 
+    user_name = puser.name if puser else None
+    user_id = puser.id if puser else 0
+
     # noinspection PyArgumentList
     new_event = EventItem(
-        user_id=puser.id,
-        user_name=puser.name,
+        user_id=user_id,
+        user_name=user_name,
         action="create",
         ip_address=ip_address,
         last_lat=last_lat,
