@@ -790,7 +790,7 @@ def download_floor_plan(wowi: WowiPy, uu_id: int):
 
 
 def download_photo(wowi: WowiPy, entity_name: str, media_id: int):
-    uumedia = wowi.get_media(entity_name="UseUnit", media_id=media_id)
+    uumedia = wowi.get_media(entity_name=entity_name, media_id=media_id)
     if not uumedia:
         return None
     dest_media_entry = uumedia[0]
