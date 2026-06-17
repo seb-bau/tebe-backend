@@ -77,6 +77,7 @@ def create_app():
     from app.routes_api_masterdata import register_routes_api_masterdata
     from app.routes_api_ticket import register_routes_api_ticket
     from app.routes_api_mod_prop import register_routes_api_mod_prop
+    from app.routes_api_contract import register_routes_api_contract
     from app.cli import register_cli_commands
 
     register_routes_auth(tapp)
@@ -89,6 +90,7 @@ def create_app():
     register_routes_api_ticket(tapp)
     register_cli_commands(tapp)
     register_routes_api_mod_prop(tapp)
+    register_routes_api_contract(tapp)
 
     from app.models import User, UseUnitType, UseUnitTypeItem
 

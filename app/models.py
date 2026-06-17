@@ -185,6 +185,40 @@ class ErpUseUnit(db.Model):
     contractor_first_name_2 = db.Column(db.String(200), nullable=True)
     description_of_position = db.Column(db.String(200), nullable=True)
 
+    contract_positions = db.relationship(
+        "ContractPosition",
+        back_populates="erp_use_unit",
+        cascade="all, delete-orphan",
+    )
+
+
+class ContractPosition(db.Model):
+    __tablename__ = "contract_position"
+
+    id = db.Column(db.Integer, primary_key=True)
+    erp_id = db.Column(db.Integer, nullable=False, unique=True, index=True)
+    net_amount = db.Column(db.Numeric, nullable=False)
+    amount = db.Column(db.Numeric, nullable=False)
+    erp_contract_id = db.Column(db.Integer, nullable=False)
+    vat_rate_id = db.Column(db.Integer, nullable=False)
+    vat_rate_code = db.Column(db.String, nullable=False)
+    position_type_id = db.Column(db.Integer, nullable=False)
+    position_type_name = db.Column(db.String, nullable=False)
+
+    erp_use_unit_id = db.Column(
+        db.Integer,
+        db.ForeignKey("erp_use_unit.id"),
+        nullable=False,
+    )
+
+    erp_use_unit = db.relationship(
+        "ErpUseUnit",
+        back_populates="contract_positions",
+    )
+
+    def __repr__(self):
+        return f"Contract Position for contract id {self.erp_contract_id}: {self.position_type_name} {self.amount}"
+
 
 class Department(db.Model):
     __tablename__ = "department"

@@ -8,7 +8,7 @@ import logging
 from app.extensions import db
 from app.models import (FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem,
                         EstatePictureType, MediaEntity, Department, ResponsibleOfficial, ErpUseUnit, UseUnitType,
-                        BuildingType, GeoBuilding)
+                        BuildingType, GeoBuilding, ContractPosition)
 from threading import Lock
 from datetime import datetime
 import re
@@ -420,6 +420,7 @@ def sync_erp_data():
     sync_estate_picture_types(wowi)
     sync_media_entities(wowi)
     sync_departments(wowi)
+    sync_contract_positions(wowi)
 
 
 def sync_erp_department_data():
@@ -430,6 +431,11 @@ def sync_erp_department_data():
 def sync_erp_use_unit_data():
     wowi = get_wowi_client()
     sync_use_units(wowi)
+
+
+def sync_erp_contract_positions():
+    wowi = get_wowi_client()
+    sync_contract_positions(wowi)
 
 
 def sync_erp_building_data():
@@ -989,6 +995,72 @@ def sync_use_units(wowi: WowiPy):
     all_uus = db.session.query(ErpUseUnit).all()
     for all_uu_check in all_uus:
         if all_uu_check.erp_id not in uu_ids:
+            db.session.delete(all_uu_check)
+    db.session.commit()
+
+
+def sync_contract_positions(wowi: WowiPy):
+    cpos_complete = wowi.get_all_contract_positions(contract_positions_active_on=datetime.now(),
+                                                    license_agreement_active_on=datetime.now())
+
+    def get_cpos(use_unit_id: int) -> list:
+        retval = []
+        for tentry in cpos_complete:
+            if tentry.valid_contract_position.name == "ungültig":
+                continue
+            if tentry.license_agreement.use_unit.id_ == use_unit_id:
+                retval.append(tentry)
+        return retval
+
+    erp_use_units = db.session.query(ErpUseUnit).all()
+    pos_ids = []
+    counter = 0
+    total = len(erp_use_units)
+    for entry in erp_use_units:
+        print(f"{counter} / {total}")
+        counter += 1
+        if entry.contractor_last_name_1 is None:
+            continue
+        cpositions = get_cpos(entry.erp_id)
+        if not cpositions:
+            errmsg = f"No contract positions for erp_use_unit {entry.erp_id}"
+            logger.error(errmsg)
+            print(errmsg)
+            continue
+
+        for cpos in cpositions:
+            if cpos.valid_contract_position.name == "ungültig":
+                continue
+            pos_ids.append(cpos.id_)
+            local_cposition = (db.session.query(ContractPosition)
+                               .filter(ContractPosition.erp_id == cpos.id_)
+                               .first())
+            if local_cposition:
+                local_cposition.net_amount = cpos.net_amount
+                local_cposition.amount = cpos.amount
+                local_cposition.vat_rate_id = cpos.vat_rate.id_
+                local_cposition.vat_rate_code = cpos.vat_rate.code
+                local_cposition.position_type_id = cpos.contract_position_type.id_
+                local_cposition.position_type_name = cpos.contract_position_type.name
+            else:
+                # noinspection PyArgumentList
+                local_cposition = ContractPosition(
+                    erp_id=cpos.id_,
+                    net_amount=cpos.net_amount,
+                    amount=cpos.amount,
+                    erp_contract_id=cpos.license_agreement.id_,
+                    vat_rate_id=cpos.vat_rate.id_,
+                    vat_rate_code=cpos.vat_rate.code,
+                    position_type_id=cpos.contract_position_type.id_,
+                    position_type_name=cpos.contract_position_type.name,
+                    erp_use_unit_id=entry.erp_id
+                )
+                db.session.add(local_cposition)
+
+            db.session.commit()
+    all_pos = db.session.query(ContractPosition).all()
+    for all_uu_check in all_pos:
+        if all_uu_check.erp_id not in pos_ids:
             db.session.delete(all_uu_check)
     db.session.commit()
 

@@ -3,7 +3,7 @@ from app.extensions import db
 from app.models import User, UseUnitType, UseUnitTypeItem
 from app.geo import update_geolocation, get_buildings_in_radius_m
 from app.erp import (sync_erp_data, sync_erp_department_data, sync_erp_use_unit_data, sync_erp_building_data,
-                     sync_erp_component_facility_catalog, fix_building_types)
+                     sync_erp_component_facility_catalog, fix_building_types, sync_erp_contract_positions)
 from app.entra_sync import sync_entra_users
 
 
@@ -87,6 +87,11 @@ def register_cli_commands(app):
     @app.cli.command("sync-erp-use-units")
     def cli_sync_erp_use_units():
         results = sync_erp_use_unit_data()
+        click.echo(f"Result: {results}")
+
+    @app.cli.command("sync-erp-contract-positions")
+    def cli_sync_erp_contract_positions():
+        results = sync_erp_contract_positions()
         click.echo(f"Result: {results}")
 
     @app.cli.command("sync-erp-buildings")

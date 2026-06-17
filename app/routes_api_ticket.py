@@ -56,6 +56,36 @@ def normalize_int(value) -> int | None:
         return None
 
 
+def normalize_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return False
+
+    if isinstance(value, int):
+        return value != 0
+
+    if isinstance(value, str):
+        normalized_value = value.strip().lower()
+
+        if normalized_value in ("true", "1", "yes", "y", "on"):
+            return True
+
+        if normalized_value in ("false", "0", "no", "n", "off", ""):
+            return False
+
+    return False
+
+
+def get_building_erp_id(use_unit_erp_id: int) -> int:
+    the_use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_erp_id).first()
+    if not the_use_unit:
+        logger.error(f"ticket_create: Should connect building but cannot find uu '{use_unit_erp_id}'")
+        return 0
+    return the_use_unit.erp_building_id
+
+
 def register_routes_api_ticket(app):
     from app.celery_app import celery
 
@@ -69,6 +99,7 @@ def register_routes_api_ticket(app):
         dest_user_id = normalize_int(request.form.get("dest_user_id"))
         dest_contract_id = normalize_int(request.form.get("dest_contract_id"))
         is_floor_plan_change = bool(request.form.get("is_floor_plan_change"))
+        connect_building = normalize_bool(request.form.get("connect_building"))
         temp_dir = os.path.join(tempfile.gettempdir(), "tebe_ticket_photos")
         checklist_item_id_raw = request.form.get("checklist_item_id") or None
         checklist_item_id = None
@@ -91,11 +122,8 @@ def register_routes_api_ticket(app):
             if not checklist_item.connect_use_unit:
                 connect_use_unit = False
             if checklist_item.connect_building:
-                the_use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_id).first()
-                if not the_use_unit:
-                    logger.error(f"ticket_create: Should connect building but cannot find uu '{use_unit_id}'")
-                else:
-                    dest_building_id = the_use_unit.erp_building_id
+                if isinstance(use_unit_id, int):
+                    dest_building_id = get_building_erp_id(use_unit_id)
             if checklist_item.connect_eco_unit:
                 if the_use_unit is None:
                     the_use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == use_unit_id).first()
@@ -150,6 +178,11 @@ def register_routes_api_ticket(app):
         if ticket_footer:
             ticket_footer = ticket_footer.replace("<user_name>", user.name)
             content = f"{content}\n\n{ticket_footer}"
+
+        # Switch "Connect Building" in App
+        if connect_building and not dest_building_id:
+            if isinstance(use_unit_id, int):
+                dest_building_id = get_building_erp_id(use_unit_id)
 
         active_assignments = []
 
