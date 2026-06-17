@@ -207,7 +207,7 @@ class ContractPosition(db.Model):
 
     erp_use_unit_id = db.Column(
         db.Integer,
-        db.ForeignKey("erp_use_unit.id"),
+        db.ForeignKey("erp_use_unit.erp_id"),
         nullable=False,
     )
 

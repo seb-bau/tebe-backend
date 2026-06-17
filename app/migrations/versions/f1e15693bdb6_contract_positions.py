@@ -29,7 +29,7 @@ def upgrade():
     sa.Column('position_type_id', sa.Integer(), nullable=False),
     sa.Column('position_type_name', sa.String(100), nullable=False),
     sa.Column('erp_use_unit_id', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['erp_use_unit_id'], ['erp_use_unit.id'], ),
+    sa.ForeignKeyConstraint(['erp_use_unit_id'], ['erp_use_unit.id'], name="contract_position_ibfk_1"),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('contract_position', schema=None) as batch_op:
