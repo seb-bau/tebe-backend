@@ -25,9 +25,9 @@ def upgrade():
     sa.Column('amount', sa.Numeric(), nullable=False),
     sa.Column('erp_contract_id', sa.Integer(), nullable=False),
     sa.Column('vat_rate_id', sa.Integer(), nullable=False),
-    sa.Column('vat_rate_code', sa.String(), nullable=False),
+    sa.Column('vat_rate_code', sa.String(100), nullable=False),
     sa.Column('position_type_id', sa.Integer(), nullable=False),
-    sa.Column('position_type_name', sa.String(), nullable=False),
+    sa.Column('position_type_name', sa.String(100), nullable=False),
     sa.Column('erp_use_unit_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['erp_use_unit_id'], ['erp_use_unit.id'], ),
     sa.PrimaryKeyConstraint('id')

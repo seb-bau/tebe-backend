@@ -201,9 +201,9 @@ class ContractPosition(db.Model):
     amount = db.Column(db.Numeric, nullable=False)
     erp_contract_id = db.Column(db.Integer, nullable=False)
     vat_rate_id = db.Column(db.Integer, nullable=False)
-    vat_rate_code = db.Column(db.String, nullable=False)
+    vat_rate_code = db.Column(db.String(100), nullable=False)
     position_type_id = db.Column(db.Integer, nullable=False)
-    position_type_name = db.Column(db.String, nullable=False)
+    position_type_name = db.Column(db.String(100), nullable=False)
 
     erp_use_unit_id = db.Column(
         db.Integer,
