@@ -39,7 +39,8 @@ def register_routes_api_contract(app):
                 "contractor1_first": the_uu.contractor_first_name_1,
                 "start": the_uu.contract_start,
                 "end": the_uu.contract_end,
-                "contract_positions": cpos_list
+                "contract_positions": cpos_list,
+                "contract_arrears": the_uu.month_in_arrears
             }
         )
         return retval

@@ -8,13 +8,14 @@ import logging
 from app.extensions import db
 from app.models import (FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem,
                         EstatePictureType, MediaEntity, Department, ResponsibleOfficial, ErpUseUnit, UseUnitType,
-                        BuildingType, GeoBuilding, ContractPosition)
+                        BuildingType, GeoBuilding, ContractPosition, UseUnitType)
 from threading import Lock
 from datetime import datetime
 import re
 import os
 import tempfile
 from typing import Optional
+from decimal import Decimal
 
 logger = logging.getLogger()
 
@@ -1002,6 +1003,7 @@ def sync_use_units(wowi: WowiPy):
 def sync_contract_positions(wowi: WowiPy):
     cpos_complete = wowi.get_all_contract_positions(contract_positions_active_on=datetime.now(),
                                                     license_agreement_active_on=datetime.now())
+    accs_complete = wowi.get_rent_accounts(license_agreement_active_on=datetime.now(), fetch_all=True)
 
     def get_cpos(use_unit_id: int) -> list:
         retval = []
@@ -1012,20 +1014,49 @@ def sync_contract_positions(wowi: WowiPy):
                 retval.append(tentry)
         return retval
 
+    def get_bal(erp_contract_id: int) -> Decimal:
+        for tentry in accs_complete:
+            if tentry.license_agreement.get("id") == erp_contract_id:
+                return Decimal(tentry.day_balance_by_open_items)
+        return Decimal("0")
+
+    def calc_arrears(tentry: ErpUseUnit, ttotal_rent: dict) -> Decimal:
+        current_uu_rent = ttotal_rent.get(tentry.erp_contract_id)
+        if not current_uu_rent:
+            terrmsg = (f"sync_contract_positions: Cannot calculate rent for uu {tentry.erp_idnum} contract "
+                       f"{tentry.erp_contract_idnum}")
+            print(terrmsg)
+            logger.warning(terrmsg)
+            return Decimal("0")
+        # noinspection PyTypeChecker
+        current_uu_rent = Decimal(current_uu_rent)
+
+        current_uu_balance = get_bal(tentry.erp_contract_id)
+        if not current_uu_balance:
+            return Decimal("0")
+
+        if current_uu_balance >= 0:
+            return Decimal("0")
+
+        tretval = round(current_uu_balance / current_uu_rent, 2)
+        return abs(tretval)
+
     erp_use_units = db.session.query(ErpUseUnit).all()
     pos_ids = []
+    total_rent = {}
     counter = 0
     total = len(erp_use_units)
     for entry in erp_use_units:
         print(f"{counter} / {total}")
         counter += 1
         if entry.contractor_last_name_1 is None:
+            entry.month_in_arrears = Decimal("0")
             continue
         cpositions = get_cpos(entry.erp_id)
         if not cpositions:
+            entry.month_in_arrears = Decimal("0")
             errmsg = f"No contract positions for erp_use_unit {entry.erp_id}"
-            logger.error(errmsg)
-            print(errmsg)
+            logger.warning(errmsg)
             continue
 
         for cpos in cpositions:
@@ -1056,8 +1087,17 @@ def sync_contract_positions(wowi: WowiPy):
                     erp_use_unit_id=entry.erp_id
                 )
                 db.session.add(local_cposition)
+            contract_rent = total_rent.get(local_cposition.erp_contract_id) or 0
+            contract_rent += local_cposition.amount
+            total_rent[local_cposition.erp_contract_id] = contract_rent
+        # Mietrückstand berechnen
+        calc_arrears_for = [UseUnitType.APARTMENT, UseUnitType.COMMERCIAL]
+        if entry.use_unit_type in calc_arrears_for:
+            entry.month_in_arrears = calc_arrears(entry, total_rent)
+        else:
+            entry.month_in_arrears = Decimal("0")
 
-            db.session.commit()
+    db.session.commit()
     all_pos = db.session.query(ContractPosition).all()
     for all_uu_check in all_pos:
         if all_uu_check.erp_id not in pos_ids:

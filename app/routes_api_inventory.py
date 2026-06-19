@@ -11,6 +11,7 @@ import logging
 from app.helpers import _json_from_file
 from app.payloads import store_payload
 from datetime import datetime
+from decimal import Decimal
 
 logger = logging.getLogger()
 
@@ -233,9 +234,22 @@ def register_routes_api_inventory(app):
                         "readonly": cat_item.readonly
                     })
 
+            # Mietrückstand
+            current_arrears = erp_use_unit.month_in_arrears
+            arrear_alert_limit = current_app.config["INI_CONFIG"].getint(
+                        "Handling", "month_arrear_limit",
+                        fallback=2
+                    )
+            if current_arrears >= arrear_alert_limit:
+                arrear_alert = True
+            else:
+                arrear_alert = False
+
             return {
                 "existing_items": retval_existing,
-                "missing_items": retval_missing
+                "missing_items": retval_missing,
+                "arrear_alert": arrear_alert,
+                "arrear_alert_limit": arrear_alert_limit
             }
 
         oretval = with_wowi_retry(_do_app_uu_current_data, uu_id=use_unit_id)

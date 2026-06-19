@@ -184,6 +184,7 @@ class ErpUseUnit(db.Model):
     contractor_last_name_2 = db.Column(db.String(200), nullable=True)
     contractor_first_name_2 = db.Column(db.String(200), nullable=True)
     description_of_position = db.Column(db.String(200), nullable=True)
+    month_in_arrears = db.Column(db.Numeric, nullable=True)
 
     contract_positions = db.relationship(
         "ContractPosition",
