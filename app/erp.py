@@ -7,7 +7,7 @@ from flask import current_app
 import logging
 from app.extensions import db
 from app.models import (FacilityCatalogItem, ComponentCatalogItem, UnderComponentItem, EventItem, User, FacilityItem,
-                        EstatePictureType, MediaEntity, Department, ResponsibleOfficial, ErpUseUnit, UseUnitType,
+                        EstatePictureType, MediaEntity, Department, ResponsibleOfficial, ErpUseUnit,
                         BuildingType, GeoBuilding, ContractPosition, UseUnitType)
 from threading import Lock
 from datetime import datetime
@@ -487,8 +487,8 @@ def create_component(
         count: int,
         puser: Optional[User],
         puu_id: int,
-        psub_components: list[int] = None,
-        comment: str = None,
+        psub_components: list[int] | None = None,
+        comment: str | None = None,
         ip_address: str | None = None,
         last_lat: str | None = None,
         last_lon: str | None = None,
@@ -587,9 +587,9 @@ def edit_component(
         wowi: WowiPy,
         component_id: int,
         count: int,
-        psub_components: list[int] = None,
+        psub_components: list[int] | None = None,
         unknown: bool = False,
-        comment: str = None,
+        comment: str | None = None,
         puser: User | None = None,
         ip_address: str | None = None,
         last_lat: str | None = None,
@@ -1003,7 +1003,32 @@ def sync_use_units(wowi: WowiPy):
 def sync_contract_positions(wowi: WowiPy):
     cpos_complete = wowi.get_all_contract_positions(contract_positions_active_on=datetime.now(),
                                                     license_agreement_active_on=datetime.now())
-    accs_complete = wowi.get_rent_accounts(license_agreement_active_on=datetime.now(), fetch_all=True)
+    rent_accounts_complete = wowi.get_rent_accounts(license_agreement_active_on=datetime.now(), fetch_all=True)
+    contracts_complete = wowi.get_license_agreements(license_agreement_active_on=datetime.now(), fetch_all=True)
+    opn_pos_complete = []
+    tall_uu = db.session.query(ErpUseUnit).all()
+    total = len(tall_uu)
+    tcounter = 0
+    for tx in tall_uu:
+        tcounter += 1
+        print(f"{tcounter} / {total}")
+        tpos = wowi.get_open_rent_account_positions(use_unit_id=tx.erp_id,
+                                                    license_agreement_active_on=datetime.now(),
+                                                    fetch_all=True)
+        opn_pos_complete.extend(tpos)
+
+    CENT = Decimal("0.01")
+
+    def money(value) -> Decimal:
+        if value is None:
+            return Decimal("0.00")
+        return Decimal(str(value)).quantize(CENT)
+
+    def get_contract(erp_contract_id: int) -> LicenseAgreement | None:
+        for tentry in contracts_complete:
+            if tentry.id_ == erp_contract_id:
+                return tentry
+        return None
 
     def get_cpos(use_unit_id: int) -> list:
         retval = []
@@ -1014,38 +1039,79 @@ def sync_contract_positions(wowi: WowiPy):
                 retval.append(tentry)
         return retval
 
-    def get_bal(erp_contract_id: int) -> Decimal:
-        for tentry in accs_complete:
+    def get_account_bal(erp_contract_id: int) -> Decimal:
+        for tentry in rent_accounts_complete:
             if tentry.license_agreement.get("id") == erp_contract_id:
-                return Decimal(tentry.day_balance_by_open_items)
-        return Decimal("0")
+                return money(tentry.total_balance_by_open_items)
+        return Decimal("0.00")
 
-    def calc_arrears(tentry: ErpUseUnit, ttotal_rent: dict) -> Decimal:
+    def get_dunning_data(erp_contract: LicenseAgreement) -> dict:
+        fallback = {}
+        if erp_contract.dunning_data and erp_contract.dunning_data.dunning_level:
+            return {
+                "dunning_id": erp_contract.dunning_data.dunning_level.id_,
+                "dunning_code": erp_contract.dunning_data.dunning_level.code
+            }
+        return fallback
+
+    def get_bal(erp_contract_id: int, booking_text_whitelist: list) -> Decimal:
+        tsum = Decimal("0.00")
+        for tentry in opn_pos_complete:
+            if tentry.license_agreement.get("id") == erp_contract_id and tentry.booking_text_open_items:
+                if (any(term.lower() in tentry.booking_text_open_items.lower() for term in booking_text_whitelist)
+                        or tentry.debit_credit == "C"):
+                    amount = money(tentry.amount)
+                    if tentry.debit_credit == "D":
+                        # SOLL
+                        tsum = tsum - amount
+                    else:
+                        # HABEN
+                        tsum = tsum + amount
+        if tsum > 0:
+            tsum = Decimal("0.00")
+        return tsum.quantize(CENT)
+
+    def calc_arrears(tentry: ErpUseUnit, ttotal_rent: dict, booking_text_whitelist: list) -> dict:
+        fallback = {
+            "month_arrears": Decimal("0"),
+            "balance_account": Decimal("0"),
+            "balance_positions": Decimal("0"),
+            "total_rent": Decimal("0")
+        }
         current_uu_rent = ttotal_rent.get(tentry.erp_contract_id)
         if not current_uu_rent:
             terrmsg = (f"sync_contract_positions: Cannot calculate rent for uu {tentry.erp_idnum} contract "
                        f"{tentry.erp_contract_idnum}")
             print(terrmsg)
             logger.warning(terrmsg)
-            return Decimal("0")
+            return fallback
         # noinspection PyTypeChecker
-        current_uu_rent = Decimal(current_uu_rent)
+        current_uu_rent = money(current_uu_rent)
 
-        current_uu_balance = get_bal(tentry.erp_contract_id)
+        current_uu_balance = get_bal(tentry.erp_contract_id, booking_text_whitelist)
         if not current_uu_balance:
-            return Decimal("0")
+            return fallback
 
         if current_uu_balance >= 0:
-            return Decimal("0")
+            return fallback
 
-        tretval = round(current_uu_balance / current_uu_rent, 2)
-        return abs(tretval)
+        tretval = {
+            "month_arrears": abs((current_uu_balance / current_uu_rent).quantize(CENT)),
+            "balance_account": get_account_bal(tentry.erp_contract_id),
+            "balance_positions": current_uu_balance.quantize(CENT),
+            "total_rent": current_uu_rent.quantize(CENT)
+        }
+        return tretval
 
     erp_use_units = db.session.query(ErpUseUnit).all()
     pos_ids = []
     total_rent = {}
     counter = 0
     total = len(erp_use_units)
+    config = current_app.config["INI_CONFIG"]
+    btext_whitelist_raw = config.get("Handling", "whitelist_rent_booking_text", fallback=None)
+    btext_whitelist = btext_whitelist_raw.split("|") or []
+
     for entry in erp_use_units:
         print(f"{counter} / {total}")
         counter += 1
@@ -1087,15 +1153,36 @@ def sync_contract_positions(wowi: WowiPy):
                     erp_use_unit_id=entry.erp_id
                 )
                 db.session.add(local_cposition)
-            contract_rent = total_rent.get(local_cposition.erp_contract_id) or 0
-            contract_rent += local_cposition.amount
-            total_rent[local_cposition.erp_contract_id] = contract_rent
+            contract_rent = total_rent.get(local_cposition.erp_contract_id) or Decimal("0.00")
+            contract_rent += money(local_cposition.amount)
+            total_rent[local_cposition.erp_contract_id] = contract_rent.quantize(CENT)
         # Mietrückstand berechnen
         calc_arrears_for = [UseUnitType.APARTMENT, UseUnitType.COMMERCIAL]
         if entry.use_unit_type in calc_arrears_for:
-            entry.month_in_arrears = calc_arrears(entry, total_rent)
+            arrear_result = calc_arrears(entry, total_rent, btext_whitelist)
+            entry.month_in_arrears = arrear_result.get("month_arrears")
+            entry.rent_total = arrear_result.get("total_rent")
+            entry.balance_positions = arrear_result.get("balance_positions")
+            entry.balance_account = arrear_result.get("balance_account")
         else:
             entry.month_in_arrears = Decimal("0")
+            entry.rent_total = Decimal("0")
+            entry.balance_positions = Decimal("0")
+            entry.balance_account = Decimal("0")
+
+        # Mahndaten auslesen
+        the_erp_contract = get_contract(entry.erp_contract_id)
+        if not the_erp_contract:
+            entry.dunning_id = None
+            entry.dunning_code = None
+        else:
+            tdunning_data = get_dunning_data(the_erp_contract)
+            if not tdunning_data:
+                entry.dunning_id = None
+                entry.dunning_code = None
+            else:
+                entry.dunning_id = tdunning_data["dunning_id"]
+                entry.dunning_code = tdunning_data["dunning_code"]
 
     db.session.commit()
     all_pos = db.session.query(ContractPosition).all()

@@ -185,6 +185,11 @@ class ErpUseUnit(db.Model):
     contractor_first_name_2 = db.Column(db.String(200), nullable=True)
     description_of_position = db.Column(db.String(200), nullable=True)
     month_in_arrears = db.Column(db.Numeric, nullable=True)
+    balance_account = db.Column(db.Numeric, nullable=True)
+    balance_positions = db.Column(db.Numeric, nullable=True)
+    rent_total = db.Column(db.Numeric, nullable=True)
+    dunning_id = db.Column(db.Integer, nullable=True)
+    dunning_code = db.Column(db.String(200), nullable=True)
 
     contract_positions = db.relationship(
         "ContractPosition",
