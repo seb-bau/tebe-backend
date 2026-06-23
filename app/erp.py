@@ -1110,7 +1110,7 @@ def sync_contract_positions(wowi: WowiPy):
     total = len(erp_use_units)
     config = current_app.config["INI_CONFIG"]
     btext_whitelist_raw = config.get("Handling", "whitelist_rent_booking_text", fallback=None)
-    btext_whitelist = btext_whitelist_raw.split("|") or []
+    btext_whitelist = btext_whitelist_raw.split("|") if btext_whitelist_raw else []
 
     for entry in erp_use_units:
         print(f"{counter} / {total}")
