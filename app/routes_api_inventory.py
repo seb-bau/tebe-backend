@@ -238,7 +238,7 @@ def register_routes_api_inventory(app):
             current_arrears = erp_use_unit.month_in_arrears
             arrear_alert_limit = current_app.config["INI_CONFIG"].getint(
                         "Handling", "month_arrear_limit",
-                        fallback=2
+                        fallback=100
                     )
             if current_arrears >= arrear_alert_limit:
                 arrear_alert = True
