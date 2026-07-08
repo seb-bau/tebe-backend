@@ -190,6 +190,7 @@ class ErpUseUnit(db.Model):
     rent_total = db.Column(db.Numeric, nullable=True)
     dunning_id = db.Column(db.Integer, nullable=True)
     dunning_code = db.Column(db.String(200), nullable=True)
+    living_space = db.Column(db.Numeric, nullable=True)
 
     contract_positions = db.relationship(
         "ContractPosition",

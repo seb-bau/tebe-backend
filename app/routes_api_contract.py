@@ -1,10 +1,47 @@
-from flask import jsonify
+from configparser import ConfigParser
+
+from flask import jsonify, current_app
 from flask_jwt_extended import jwt_required
 from app.models import ErpUseUnit, ContractPosition
 import logging
 from app.extensions import db
+from decimal import Decimal
 
 logger = logging.getLogger()
+
+
+def get_config() -> ConfigParser:
+    return current_app.config["INI_CONFIG"]
+
+
+def get_rent_per_square_meter(cont_positions: list, living_space: Decimal) -> dict:
+    config = get_config()
+    rent_mode = config.get("Handling", "rent_per_sqm_mode", fallback="net")
+    relevant_positions_raw = config.get("Handling", "rent_per_sqm_positions", fallback="")
+    relevant_positions = [
+        position.strip().casefold()
+        for position in relevant_positions_raw.split("|")
+        if position.strip()
+    ]
+
+    if not cont_positions or not living_space:
+        return {
+            "mode": rent_mode,
+            "rent_per_sqm": Decimal("0.00")
+        }
+
+    rent_sum = Decimal("0.00")
+    entry: ContractPosition
+    for entry in cont_positions:
+        position_type_name = (entry.position_type_name or "").casefold()
+
+        if not relevant_positions or position_type_name in relevant_positions:
+            rent_sum += Decimal(entry.amount)
+
+    return {
+        "mode": rent_mode,
+        "rent_per_sqm": round(rent_sum / living_space, 2)
+    }
 
 
 def register_routes_api_contract(app):
@@ -27,10 +64,16 @@ def register_routes_api_contract(app):
             for entry in contract_positions:
                 cpos_list.append(
                     {
-                        "amount": entry.amount,
+                        "amount": round(entry.amount, 2),
                         "name": entry.position_type_name
                     }
                 )
+        try:
+            rpsqm = get_rent_per_square_meter(contract_positions, the_uu.living_space)
+        except Exception as e:
+            logger.error(f"Exception while getting rpsqm: {str(e)}")
+            rpsqm = {"mode": "net", "rent_per_sqm": Decimal("0.00")}
+
         retval = jsonify(
             {
                 "id": the_uu.erp_contract_id,
@@ -40,7 +83,10 @@ def register_routes_api_contract(app):
                 "start": the_uu.contract_start,
                 "end": the_uu.contract_end,
                 "contract_positions": cpos_list,
-                "contract_arrears": the_uu.month_in_arrears
+                "contract_arrears": round(the_uu.month_in_arrears, 2),
+                "rent_per_sqm": rpsqm.get("rent_per_sqm"),
+                "rent_per_sqm_mode": rpsqm.get("mode"),
+                "living_space": round(the_uu.living_space, 2)
             }
         )
         return retval

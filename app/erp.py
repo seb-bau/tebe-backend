@@ -951,6 +951,12 @@ def sync_use_units(wowi: WowiPy):
 
         uu_ids.append(entry.id_)
         find_use_unit = db.session.query(ErpUseUnit).filter(ErpUseUnit.erp_id == entry.id_).first()
+
+        if entry.living_space:
+            tliving_space = Decimal(entry.living_space)
+        else:
+            tliving_space = Decimal("0.00")
+
         if find_use_unit:
             find_use_unit.use_unit_type = uu_type
             find_use_unit.erp_id = entry.id_
@@ -968,6 +974,7 @@ def sync_use_units(wowi: WowiPy):
             find_use_unit.is_vacancy = contract_is_vacancy
             find_use_unit.is_cancelled = contract_is_cancelled
             find_use_unit.description_of_position = entry.description_of_position
+            find_use_unit.living_space = tliving_space
         else:
             # noinspection PyArgumentList
             find_use_unit = ErpUseUnit(
@@ -986,7 +993,8 @@ def sync_use_units(wowi: WowiPy):
                 contract_end=contract_end,
                 is_vacancy=contract_is_vacancy,
                 is_cancelled=contract_is_cancelled,
-                description_of_position=entry.description_of_position
+                description_of_position=entry.description_of_position,
+                living_space=tliving_space
             )
             db.session.add(find_use_unit)
         db.session.commit()

@@ -11,7 +11,6 @@ import logging
 from app.helpers import _json_from_file
 from app.payloads import store_payload
 from datetime import datetime
-from decimal import Decimal
 
 logger = logging.getLogger()
 
